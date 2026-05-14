@@ -363,17 +363,16 @@ def main(args):
 						if ( not args.concatenate ):
 
 							if not os.path.exists(fobj["out"]):
-							  os.makedirs(fobj["out"])
-
+								os.makedirs(fobj["out"])
 							for i in range(out_features_np.shape[0]):
-							  out_img = GetImage(out_features_np[i])
+								out_img = GetImage(out_features_np[i])
 
-							  out_filename = os.path.join(fobj["out"], str(i) + "_" + point_features_name + ".nrrd")
-							  print("Writing:", out_filename)
+								out_filename = os.path.join(fobj["out"], str(i) + "_" + point_features_name + ".nrrd")
+								print("Writing:", out_filename)
 
-							  writer = itk.ImageFileWriter.New(FileName=out_filename, Input=out_img)
-							  writer.UseCompressionOn()
-							  writer.Update()
+								writer = itk.ImageFileWriter.New(FileName=out_filename, Input=out_img)
+								writer.UseCompressionOn()
+								writer.Update()
 						else:
 							out_features_name = os.path.splitext(fobj["out"])
 							out_features_name = out_features_name[0] + "_" + point_features_name + out_features_name[1]

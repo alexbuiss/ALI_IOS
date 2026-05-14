@@ -3,12 +3,13 @@ import GlobVar as GV
 import torch.nn as nn
 from pytorch3d.structures.meshes import Meshes
 from pytorch3d.renderer import Materials
-from typing import Optional
+from typing import Optional, Union
 from pytorch3d.renderer.blending import (hard_rgb_blend,BlendParams)
 from pytorch3d.renderer.mesh.rasterizer import (Fragments)
 from pytorch3d.renderer.utils import TensorProperties
 from pytorch3d.renderer.lighting import PointLights
-from pytorch3d.common.types import Device
+
+Device = Union[str, torch.device]
 
 class MaskRenderer(nn.Module):
 

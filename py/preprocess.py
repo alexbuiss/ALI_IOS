@@ -347,8 +347,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='separAte all the teeth from a vtk file', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     input_param = parser.add_argument_group('input files')
-    # input_param.add_argument('--dir_project', type=str, help='Directory with all the project', default='/Users/luciacev-admin/Documents/AutomatedLandmarks')
-    # input_param.add_argument('--dir_data', type=str, help='Input directory with 3D images', default=parser.parse_args().dir_project+'/fly-by-cnn/data')
     input_param.add_argument('--dir_data', type=str, help='Input directory with 3D images', default='/Users/luciacev-admin/Desktop/data_ALIDDM_ADJ')
     input_param.add_argument('--landmarks_dir', type=str, help='landmarks directory', default=parser.parse_args().dir_data+'/landmarks')
     input_param.add_argument('--model_dir', type=str, help='model file directory', default=parser.parse_args().dir_data+'/teeth_gum')

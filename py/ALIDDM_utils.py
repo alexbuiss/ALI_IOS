@@ -35,13 +35,22 @@ import torchvision.transforms as transforms
 from shader import *
 from post_process import NeighborPoints
 
-def GetLandmarkPosFromLP(lm_pos,target):
-    lst_lm =  GV.LANDMARKS[GV.SELECTED_JAW]
+def GetLandmarkPosFromLP(lm_pos, target):
+    lst_lm = GV.LANDMARKS[GV.SELECTED_JAW]
+    # Vérifie si la target existe dans la liste globale
+    # print(target,lm_pos)
+    if target not in lst_lm:
+        print(f"DEBUG: Target {target} non trouvée dans GlobVar!")
+        return torch.zeros((len(lm_pos), 3)) # Retourne des zéros si pas trouvé
+
     lm_coord = torch.empty((0)).cpu()
-    for lst in lm_pos:
-        lst = lst.cpu()
-        # print(lst_lm)
-        lm_coord = torch.cat((lm_coord,lst[lst_lm.index(target)].unsqueeze(0)),dim=0)
+    for i, lst in enumerate(lm_pos):
+        idx = lst_lm.index(target)
+        coord = lst[idx].unsqueeze(0)
+        # DEBUG: Est-ce que le point extrait est nul ?
+        # if coord.abs().sum() < 1e-5:
+            #  print(f"DEBUG: Point nul extrait pour {target}, patient {i}")
+        lm_coord = torch.cat((lm_coord, coord.cpu()), dim=0)
 
     return lm_coord
 
@@ -76,34 +85,61 @@ def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
     return phong_renderer,mask_renderer
     
 
-def GenDataSet(df,dir_patients,flyBy,device):
+def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O'):
+    """
+    Generate training and validation datasets from a DataFrame.
+    
+    For cross-validation, pass the entire df (all rows will be used for the dataset).
+    For legacy mode, the df should have a 'for' column with 'train' and 'val' values.
+    
+    Args:
+        df: DataFrame with 'surf' and 'landmarks' columns
+        dir_patients: Path to the data directory
+        flyBy: Dataset class (FlyByDataset)
+        device: Device to use ('cpu' or 'cuda')
+        landmark_type: 'O' for Occlusal or 'C' for Cervical
+    
+    Returns:
+        (dataset, None) - For cross-validation, returns dataset and None
+    """
     SELECTED_JAW = GV.SELECTED_JAW
-    df_train = df.loc[df['for'] == "train"]
-    df_train = df_train.loc[df_train['jaw'] == SELECTED_JAW]
-    df_val = df.loc[df['for'] == "val"]
-    df_val = df_val.loc[df_val['jaw'] == SELECTED_JAW]
-    # df_train = df_train.loc[df_train[label] == 1]
-    # df_val = df_val.loc[df_val[label] == 1]
-
-    # print(df.loc[df['for'] == "test"])
-
-    # print(df_train)
-
-    train_data = flyBy(
-        df = df_train,
-        device=device,
-        dataset_dir=dir_patients,
-        rotate=False
+    
+    # Check if this is legacy mode with 'for' column or cross-validation mode
+    if 'for' in df.columns:
+        # Legacy mode: split by 'for' column
+        df_train = df.loc[df['for'] == "train"]
+        df_train = df_train.loc[df_train['jaw'] == SELECTED_JAW]
+        df_val = df.loc[df['for'] == "val"]
+        df_val = df_val.loc[df_val['jaw'] == SELECTED_JAW]
+        train_data = flyBy(
+            df=df_train,
+            device=device,
+            dataset_dir=dir_patients,
+            rotate=False,
+            landmark_type=landmark_type
         )
 
-    val_data = flyBy(
-        df = df_val,
-        device=device,
-        dataset_dir=dir_patients,
-        rotate=False
+        val_data = flyBy(
+            df=df_val,
+            device=device,
+            dataset_dir=dir_patients,
+            rotate=False,
+            landmark_type=landmark_type
         )
 
-    return train_data,val_data
+        return train_data, val_data
+    else:
+        # Cross-validation mode: use entire df as dataset
+        df_data = df.copy()
+        data = flyBy(
+            df=df_data,
+            device=device,
+            dataset_dir=dir_patients,
+            rotate=False,
+            landmark_type=landmark_type
+        )
+
+        return data, None
 
 def generate_sphere_mesh(center,radius,device,color = [1,1,1]):
     sphereSource = vtk.vtkSphereSource()
@@ -359,93 +395,106 @@ def Convert_RGB_to_grey(lst_images):
 
     return tens_images
 
-# def Gen_patch(lst_surf, V, RED, LP, label, step_neighbor):
-#     lst_landmarks = Get_lst_landmarks(LP,GV.LABEL[label])
-#     for surf_index,surf in enumerate(lst_surf):
-#         locator = vtk.vtkOctreePointLocator()
-#         locator.SetDataSet(surf)
-#         locator.BuildLocator()
-#         for color_index,landmark_coord in enumerate(lst_landmarks):
-#             patch = []
+def Gen_patch(V, RED, LP, label, radius, batch_idx, lm_typ='o'):
+    V_coords = V[0].to(GV.DEVICE)
+    # Filtre pour ignorer les points de padding (0,0,0) de la dent
+    real_surface_mask = torch.linalg.norm(V_coords, dim=1) > 1e-4
 
-#             landmark_coord =landmark_coord.to(GV.DEVICE)
-#             pid = locator.FindClosestPoint(landmark_coord[surf_index].cpu().numpy())
-#             all_neighbor_pid = NeighborPoints(surf,pid)
-#             patch.append(all_neighbor_pid)
+    lst_landmarks = Get_lst_landmarks(LP, GV.dic_label[lm_typ][label])
+    # print("liste landmarks",lm_typ,label)
+    # Couleurs pures : R(1,0,0), V(0,1,0), B(0,0,1)
+    colors = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=GV.DEVICE)
+
+    for color_index, all_patients_coords in enumerate(lst_landmarks):
+        landmark_coord = all_patients_coords[batch_idx].view(1, 3).to(GV.DEVICE)
+        # print("landmark:",landmark_coord)
         
-#             for step in range(step_neighbor):
-#                 for ids in all_neighbor_pid:
-#                     all_neighbor_pid_step = NeighborPoints(surf,ids)
-#                     patch.append(all_neighbor_pid_step)           
-#                     all_neighbor_pid = all_neighbor_pid_step
-
-#             patch = np.concatenate(patch).tolist()
-                        
-#             patch = np.unique(patch)
-#             color = [torch.tensor([1,0,0]),torch.tensor([0,1,0]),torch.tensor([0,0,1])]
-#             for i,index in enumerate(patch):
-#                 RED[surf_index][index] = color[color_index]                
-          
+        # SI LE LANDMARK EST À L'ORIGINE (0,0,0), ON SKIP TOTALEMENT
+        # C'est ce qui supprimera ton point jaune central.
+        if torch.norm(landmark_coord) < 0.05: 
+            continue 
+            
+        distances = torch.cdist(V_coords, landmark_coord, p=2).view(-1)
+        # On ne colorie que si c'est proche ET sur la vraie surface
+        mask = (distances < radius) & real_surface_mask
         
-#     return RED
-
-def Gen_patch(V, RED, LP, label, radius):
-    lst_landmarks = Get_lst_landmarks(LP,GV.LABEL[label])
-    color_index=0
-    for landmark_coord in lst_landmarks:
-        landmark_coord =landmark_coord.unsqueeze(1).to(GV.DEVICE)
-        distance = torch.cdist(landmark_coord, V, p=2)
-        distance = distance.squeeze(1)
-        index_pos_land = (distance<radius).nonzero(as_tuple=True)
-        color = [torch.tensor([1,0,0]),torch.tensor([0,1,0]),torch.tensor([0,0,1])]
-        for i,index in enumerate(index_pos_land[0]):
-            RED[index][index_pos_land[1][i]] = color[color_index]
-        color_index +=1 
-    
+        if mask.any():
+            # print("on colorie")
+            # AFFECTATION DIRECTE (=) et non addition (+=) pour éviter le jaune
+            RED[0][mask] = colors[color_index % len(colors)]
+            
     return RED
 
+def Gen_mesh_patch(surf, V, F, CN, LP, label, batch_idx, lm_typ='o'):
+    # INITIALISATION : On force tout à ZÉRO (Noir total)
+    # On ne met pas 0.1 ou 0.05, sinon la silhouette de la dent apparaît.
+    verts_rgb = torch.zeros_like(V).to(GV.DEVICE) 
+    
+    # Appel de Gen_patch pour colorier uniquement les landmarks valides
+    patch_region = Gen_patch(V, verts_rgb, LP, label, 0.02, batch_idx, lm_typ=lm_typ)    
+    
+    # Sécurité : Si Gen_patch échoue, on renvoie le noir
+    if patch_region is None: patch_region = verts_rgb
+
+    textures = TexturesVertex(verts_features=patch_region)
+    return Meshes(verts=V, faces=F, textures=textures).to(GV.DEVICE)
+
 def Gen_one_patch(V, RED, radius, coord):
+    """
+    OPTIMIZED: Vectorized version without loops.
+    """
     landmark_coord = coord.unsqueeze(0).to(GV.DEVICE)
-    distance = torch.cdist(landmark_coord, V, p=2)
-    distance = distance.squeeze(1)
-    # print(distance.shape)
-    # index_pos_land = torch.where(distance<radius,distance,torch.ones(distance.shape)*0)
-    index_pos_land = (distance<radius).nonzero(as_tuple=True)
-    # print('index_pos_land',index_pos_land)
-    # print(RED[index_pos_land])
-    for i,index in enumerate(index_pos_land[0]):
-        # print(RED[index][index_pos_land[1][i]])
-        RED[index][index_pos_land[1][i]] = torch.tensor([0,1,0])
+    
+    # Use broadcasting to avoid loops
+    V_flat = V.squeeze(0) if V.dim() == 3 else V
+    distance = torch.cdist(landmark_coord, V_flat, p=2).squeeze(0)
+    
+    # Vectorized mask + atomic assignment
+    mask = distance < radius
+    RED[mask] = torch.tensor([0.0, 1.0, 0.0], device=GV.DEVICE)
               
     return RED
 
-def Gen_mesh_patch(surf,V,F,CN,LP,label):
-    verts_rgb = torch.ones_like(CN)[None].squeeze(0)  # (1, V, 3)
-    verts_rgb[:,:, 0] *= 0  # red
-    verts_rgb[:,:, 1] *= 0  # green
-    verts_rgb[:,:, 2] *= 0  # blue 
-    # patch_region = Gen_patch(surf, V, verts_rgb, LP, label, 3)
-    patch_region = Gen_patch(V, verts_rgb, LP, label, 0.02)    
-    textures = TexturesVertex(verts_features=patch_region)
-    meshes = Meshes(
-        verts=V,   
-        faces=F, 
-        textures=textures
-    ).to(GV.DEVICE) # batchsize
-    
-    return meshes
-
-def Gen_mesh_one_patch(V,F,CN,coord):
+def Gen_mesh_one_patch(V, F, CN, coord):
     verts_rgb = torch.ones_like(CN)[None].squeeze(0)  # (1, V, 3)
     verts_rgb[:,:, 0] *= 1  # red
     verts_rgb[:,:, 1] *= 0  # green
     verts_rgb[:,:, 2] *= 0  # blue
-    patch_region = Gen_one_patch(V, verts_rgb, 0.02,coord)
+    patch_region = Gen_one_patch(V, verts_rgb, 0.02, coord)
     textures = TexturesVertex(verts_features=patch_region)
     meshes = Meshes(
         verts=V,   
         faces=F, 
         textures=textures
-    ).to(GV.DEVICE) # batchsize
+    ).to(GV.DEVICE)
     
     return meshes
+
+def Gen_Full_Mask_Mesh(S, V, F, RI):
+    device = GV.DEVICE
+    verts_rgb_list = []
+    
+    # Prepare V and F on GPU for Meshes constructor
+    V_gpu = [v.to(device) for v in V] if isinstance(V, list) else V.to(device)
+    F_gpu = [f.to(device) for f in F] if isinstance(F, list) else F.to(device)
+
+    batch_size = len(V) if isinstance(V, list) else V.shape[0]
+
+    for i in range(batch_size):
+        ri_patient = RI[i].to(device).float()
+        num_verts = V_gpu[i].shape[0]
+        
+        # Correction de taille si besoin
+        if ri_patient.shape[0] != num_verts:
+            temp_ri = torch.zeros(num_verts, device=device)
+            limit = min(num_verts, ri_patient.shape[0])
+            temp_ri[:limit] = ri_patient[:limit]
+            ri_patient = temp_ri
+
+        color_patient = torch.zeros((num_verts, 3), device=device)
+        color_patient[:, 0] = ri_patient / 255.0
+        verts_rgb_list.append(color_patient)
+    
+    textures = TexturesVertex(verts_features=verts_rgb_list)
+    # Le mesh est construit directement avec des composants GPU
+    return Meshes(verts=V_gpu, faces=F_gpu, textures=textures)

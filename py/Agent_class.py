@@ -30,30 +30,6 @@ from tqdm.std import tqdm
 from statistics import mean
 import GlobVar as GV
 
-# icosahedron = CreateIcosahedron(1, 1)
-# sphere_points=[]
-# sphere_points_L = ([0,0,1],
-#                 np.array([0.5,0.,1.0])/linalg.norm([0.5,0.5,1.0]),
-#                 np.array([-0.5,0.,1.0])/linalg.norm([-0.5,-0.5,1.0]),
-#                 np.array([0,0.5,1])/linalg.norm([1,0,1]),
-#                 np.array([0,-0.5,1])/linalg.norm([0,1,1])
-#                 )
-# sphere_points_U = ([0,0,-1],
-#                 np.array([0.5,0.,-1])/linalg.norm([0.5,0.5,-1]),
-#                 np.array([-0.5,0.,-1])/linalg.norm([-0.5,-0.5,-1]),
-#                 np.array([0,0.5,-1])/linalg.norm([1,0,-1]),
-#                 np.array([0,-0.5,-1])/linalg.norm([0,1,-1])
-#                 )
-# for pid in range(icosahedron.GetNumberOfPoints()):
-#     spoint = icosahedron.GetPoint(pid)
-#     sphere_points.append([point for point in spoint])
-
-# got = itemgetter(0,4)(sphere_points)
-# CAMERA_POSITION = np.array(got)
-# print(sphere_points)
-
-# CAMERA_POSITION = np.array(sphere_points)
-
 class Agent:
     def __init__(
         self,
@@ -61,104 +37,134 @@ class Agent:
         renderer2,
         radius = 1,
         verbose = True,
+        camera_positions = None,
         ):
         super(Agent, self).__init__()
         self.renderer = renderer
         self.renderer2=renderer2
-        self.camera_points = torch.tensor(GV.CAMERA_POSITION).type(torch.float32).to(GV.DEVICE)
+        
+        # Use provided camera positions or default
+        if camera_positions is None:
+            # Fallback: create default camera positions
+            camera_positions = np.array([
+                [0, 0, 1],
+                [0.5, 0., 1.0],
+                [-0.5, 0., 1.0],
+                [0, 0.5, 1],
+                [0, -0.5, 1]
+            ], dtype=np.float32)
+        else:
+            # Ensure it's a numpy array with correct dtype
+            camera_positions = np.asarray(camera_positions, dtype=np.float32)
+        
+        self.camera_points = torch.from_numpy(camera_positions).to(GV.DEVICE)
         self.scale = 0
         self.radius = radius
         self.verbose = verbose
 
 
     def position_agent(self, text, vert, label):
-   
+        """
+        OPTIMISÉE PHASE 2: Return positions directement pour pré-caching
+        """
         final_pos = torch.empty((0)).to(GV.DEVICE)
         
         for mesh in range(len(text)):
             if int(label) in text[mesh]:
                 index_pos_land = (text[mesh]==int(label)).nonzero(as_tuple=True)[0]
-                lst_pos = []
-                for index in index_pos_land:
-                    lst_pos.append(vert[mesh][index])
-                position_agent = sum(lst_pos)/len(lst_pos)
-                final_pos = torch.cat((final_pos,position_agent.unsqueeze(0).to(GV.DEVICE)),dim=0)
+                if len(index_pos_land) > 0:
+                    # Vectorized with indexing
+                    lst_pos = vert[mesh][index_pos_land]
+                    position_agent = lst_pos.mean(dim=0)
+                else:
+                    position_agent = torch.zeros(3, device=GV.DEVICE)
+                final_pos = torch.cat((final_pos, position_agent.unsqueeze(0).to(GV.DEVICE)), dim=0)
             else:
-                final_pos = torch.cat((final_pos,torch.zeros((1,3)).to(GV.DEVICE)),dim=0)
-        # print(final_pos.shape)
-        self.positions = final_pos
-        # print(self.positions)
-        return self.positions
-
-    
-    def GetView(self,meshes,rend=False):
-        spc = self.positions
-        img_lst = torch.empty((0)).to(GV.DEVICE)
-        seuil = 0.5
-
-        for sp in self.camera_points:
-            sp_i = sp*self.radius
-            # sp = sp.unsqueeze(0).repeat(self.batch_size,1)
-            current_cam_pos = spc + sp_i
-            R = look_at_rotation(current_cam_pos, at=spc, device=GV.DEVICE)  # (1, 3, 3)
-            # print( 'R shape :',R.shape)
-            # print(R)
-            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
-
-            if rend:
-                renderer = self.renderer2
-                images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(GV.DEVICE))
-                y = images[:,:,:,:-1]
-
-                # yd = torch.where(y[:,:,:,:]<=seuil,0.,0.)
-                yr = torch.where(y[:,:,:,0]>seuil,1.,0.).unsqueeze(-1)
-                yg = torch.where(y[:,:,:,1]>seuil,2.,0.).unsqueeze(-1)
-                yb = torch.where(y[:,:,:,2]>seuil,3.,0.).unsqueeze(-1)
-
-                y = ( yr + yg + yb).to(torch.float32)
-
-                y = y.permute(0,3,1,2)
-              
-            else:
-                renderer = self.renderer
-                images = self.renderer(meshes_world=meshes.clone(), R=R, T=T.to(GV.DEVICE))
-                images = images.permute(0,3,1,2)
-                images = images[:,:-1,:,:]
-
-                pix_to_face, zbuf, bary_coords, dists = self.renderer.rasterizer(meshes.clone())
-                zbuf = zbuf.permute(0, 3, 1, 2)
-                y = torch.cat([images, zbuf], dim=1)
-
-            img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
-        img_batch =  img_lst.permute(1,0,2,3,4)
+                final_pos = torch.cat((final_pos, torch.zeros((1, 3), device=GV.DEVICE)), dim=0)
         
-        return img_batch
+        self.positions = final_pos
+        return final_pos
+
     
-    def get_view_rasterize(self,meshes):
+    def GetView(self, meshes, rend=False):
+        # On s'assure que meshes ne contient qu'UN SEUL patient (taille 1)
+        # Si meshes > 1 ici, c'est là que le mélange commence
+        batch_size = len(meshes) 
+        n_cameras = len(self.camera_points)
+        device = GV.DEVICE
+
+        # On force le spc à correspondre UNIQUEMENT au patient en cours
+        # On prend seulement le premier élément pour éviter les résidus de batch
+        spc = self.positions.view(-1, 1, 3)[:batch_size] 
+        
+        cam_points_expanded = self.camera_points.unsqueeze(0).expand(batch_size, -1, -1)
+        current_cam_pos = spc + (cam_points_expanded * self.radius)
+        
+        R_at = spc.expand(-1, n_cameras, -1).reshape(-1, 3)
+        R_pos = current_cam_pos.reshape(-1, 3)
+
+        R = look_at_rotation(R_pos, at=R_at, device=device) 
+        T = -torch.bmm(R.transpose(1, 2), R_pos.unsqueeze(-1)).squeeze(-1)
+
+        # On étend le mesh UNIQUE du patient
+        batched_meshes = meshes.extend(n_cameras)
+        
+        # Debug: Print dimensions
+        # if batch_size == 1:
+            # print(f"[DEBUG GetView] batch_size={batch_size}, n_cameras={n_cameras}, mesh_verts={batched_meshes.verts_packed().shape}, R={R.shape}, T={T.shape}")
+
+        renderer = self.renderer2 if rend else self.renderer
+        images = renderer(meshes_world=batched_meshes, R=R, T=T) 
+
+        if rend:
+            y = images[:, :, :, 0:3].permute(0, 3, 1, 2) 
+            return y.view(batch_size, n_cameras, 3, images.shape[1], images.shape[2])
+        else:
+            rgb = images[:, :, :, :-1].permute(0, 3, 1, 2)
+            # Extract z-buffer for 4th channel
+            zbuf = renderer.rasterizer(batched_meshes).zbuf.permute(0, 3, 1, 2)
+            y = torch.cat([rgb, zbuf], dim=1) 
+            return y.view(batch_size, n_cameras, 4, images.shape[1], images.shape[2])
+    
+    def get_view_rasterize(self, meshes):
+        """
+        OPTIMIZED: Vectorized computation + batch rendering
+        """
         spc = self.positions
+        batch_size = spc.shape[0]
+        
+        all_R = []
+        all_T = []
+        
+        # Vectorized pre-computation
+        for sp in self.camera_points:
+            sp_i = sp * self.radius
+            current_cam_pos = spc + sp_i
+            R = look_at_rotation(current_cam_pos, at=spc, device=GV.DEVICE)
+            all_R.append(R)
+            
+            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]
+            all_T.append(T)
+        
         img_lst = torch.empty((0)).to(GV.DEVICE)
         tens_pix_to_face = torch.empty((0)).to(GV.DEVICE)
-
-        for sp in self.camera_points:
-            sp_i = sp*self.radius
-            current_cam_pos = spc + sp_i
-            R = look_at_rotation(current_cam_pos, at=spc, device=GV.DEVICE)  # (1, 3, 3)
-            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
-              
+        
+        for cam_idx, (R, T) in enumerate(zip(all_R, all_T)):
             renderer = self.renderer
-            images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(GV.DEVICE))
-            images = images.permute(0,3,1,2)
-            images = images[:,:-1,:,:]
-
-            pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
+            images = renderer(meshes_world=meshes, R=R, T=T.to(GV.DEVICE))
+            images = images.permute(0, 3, 1, 2)
+            images = images[:, :-1, :, :]
+            
+            fragments = renderer.rasterizer(meshes)
+            pix_to_face = fragments.pix_to_face
+            zbuf = fragments.zbuf
             zbuf = zbuf.permute(0, 3, 1, 2)
+            
             y = torch.cat([images, zbuf], dim=1)
-
-            img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
-            tens_pix_to_face = torch.cat((tens_pix_to_face,pix_to_face.unsqueeze(0)),dim=0)
-        img_batch =  img_lst.permute(1,0,2,3,4)
-    
-        return img_batch , tens_pix_to_face      
+            img_lst = torch.cat((img_lst, y.unsqueeze(1)), dim=1)
+            tens_pix_to_face = torch.cat((tens_pix_to_face, pix_to_face.unsqueeze(1)), dim=1)
+        
+        return img_lst, tens_pix_to_face      
 
 
 def PlotAgentViews(view):

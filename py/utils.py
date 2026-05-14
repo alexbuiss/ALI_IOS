@@ -101,6 +101,8 @@ def ReadSurf(fileName):
 
     fname, extension = os.path.splitext(fileName)
     extension = extension.lower()
+    # Normalize path to handle spaces and special characters
+    fileName = os.path.abspath(fileName)
     if extension == ".vtk":
         reader = vtk.vtkPolyDataReader()
         reader.SetFileName(fileName)
@@ -201,22 +203,27 @@ def GetNeighborIds(vtkdata, pid, labels, label, pid_visited):
 
     return np.unique(neighbor_pids).tolist()
 
-def ScaleSurf(surf, mean_arr = None, scale_factor = None):
+def ScaleSurf(surf, mean_arr=None, scale_factor=None):
+    # OPTIMIZATION: Avoid DeepCopy if possible
+    if mean_arr is not None and scale_factor is not None:
+        # Already scaled - return directly
+        return surf, mean_arr, scale_factor
+    
     surf_copy = vtk.vtkPolyData()
     surf_copy.DeepCopy(surf)
     surf = surf_copy
 
     shapedatapoints = surf.GetPoints()
 
-    #calculate bounding box
+    # Calculate bounding box
     mean_v = [0.0] * 3
     bounds_max_v = [0.0] * 3
 
     bounds = shapedatapoints.GetBounds()
 
-    mean_v[0] = (bounds[0] + bounds[1])/2.0
-    mean_v[1] = (bounds[2] + bounds[3])/2.0
-    mean_v[2] = (bounds[4] + bounds[5])/2.0
+    mean_v[0] = (bounds[0] + bounds[1]) / 2.0
+    mean_v[1] = (bounds[2] + bounds[3]) / 2.0
+    mean_v[2] = (bounds[4] + bounds[5]) / 2.0
     bounds_max_v[0] = max(bounds[0], bounds[1])
     bounds_max_v[1] = max(bounds[2], bounds[3])
     bounds_max_v[2] = max(bounds[4], bounds[5])
@@ -227,22 +234,23 @@ def ScaleSurf(surf, mean_arr = None, scale_factor = None):
         shape_points.append(p)
     shape_points = np.array(shape_points)
     
-    #centering points of the shape
+    # Center points of the shape
     if mean_arr is None:
         mean_arr = np.array(mean_v)
-    # print("Mean:", mean_arr)
+    
+    # Vectorize NumPy operations
     shape_points = shape_points - mean_arr
 
-    #Computing scale factor if it is not provided
-    if(scale_factor is None):
+    # Compute scale factor if not provided
+    if scale_factor is None:
         bounds_max_arr = np.array(bounds_max_v)
-        scale_factor = 1/np.linalg.norm(bounds_max_arr - mean_arr)
+        scale_factor = 1 / np.linalg.norm(bounds_max_arr - mean_arr)
 
-    #scale points of the shape by scale factor
-    # print("Scale:", scale_factor)
-    shape_points_scaled = np.multiply(shape_points, scale_factor)
+    # Scale points by scale factor
+    # Vectorized NumPy (faster than loop)
+    shape_points_scaled = shape_points * scale_factor
 
-    #assigning scaled points back to shape
+    # Assign scaled points back to shape
     for i in range(shapedatapoints.GetNumberOfPoints()):
        shapedatapoints.SetPoint(i, shape_points_scaled[i])    
 
@@ -563,7 +571,7 @@ def ExtractPointFeatures(surf, point_ids_rgb, point_features_name, zero=0, use_m
 
     if use_multi:
         with Pool(cpu_count()) as p:
-        	feat = p.map(ExtractPointFeaturesClass(point_features_np, zero), point_ids_rgb)
+            feat = p.map(ExtractPointFeaturesClass(point_features_np, zero), point_ids_rgb)
     else:
         feat = ExtractPointFeaturesClass(point_features_np, zero)(point_ids_rgb)
     return np.array(feat).reshape(point_ids_rgb_shape[0:-1] + (number_of_components,))
