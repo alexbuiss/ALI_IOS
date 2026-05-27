@@ -103,9 +103,6 @@ def Training(train_dataloader, train_data, agent, epoch, nb_epoch, model, optimi
             y_true[class2_mask] = 2
             y_true[class3_mask] = 3
             
-            if y_true.dim() == 4:
-                y_true = y_true.squeeze(1)  # Remove channel dimension for DiceCELoss
-            
             # Forward pass and backward (with AMP)
             with torch.amp.autocast('cuda', enabled=True):
                 outputs = model(inputs)
@@ -141,12 +138,13 @@ def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_me
     val_loss = 0
     step = 0
     best_loss = float('inf')  # Track best loss for this fold
+    lm_type_dir = "cervical" if lm_typ == "C" else "occlusal"
     
     # Cache directories for this fold
     # INPUTS: Global (reused across all modes and folds) - NO fold_idx in path
     # TARGETS: Per-mode (separate for O and C) - includes fold_idx and lm_typ
-    input_dir = os.path.join(CACHE_BASE_DIR, f'global_inputs_{jawtype}')
-    target_dir = os.path.join(CACHE_BASE_DIR, f'fold_{fold_idx}_targets_val_{jawtype}_{lm_typ}')
+    input_dir = os.path.join(CACHE_BASE_DIR,lm_type_dir, f'global_inputs_{jawtype}')
+    target_dir = os.path.join(CACHE_BASE_DIR,lm_type_dir, f'fold_{fold_idx}_targets_val_{jawtype}_{lm_typ}')
     
     with torch.no_grad():
         for batch_idx, (S, V, F, RI, CN, LP, MR, SF) in enumerate(val_dataloader):
@@ -197,9 +195,6 @@ def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_me
                 y_true_long[class2_mask] = 2
                 y_true_long[class3_mask] = 3
                 
-                if y_true_long.dim() == 4:
-                    y_true_long = y_true_long.squeeze(1)  # Remove channel dimension
-
                 B_multi = inputs.shape[0]
                 Cam_multi = inputs.shape[1]
                 C_multi = inputs.shape[2]

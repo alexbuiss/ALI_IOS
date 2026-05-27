@@ -14,6 +14,33 @@ from monai.data import decollate_batch
 import shutil
 import vtk
 from scipy import linalg
+import matplotlib.pyplot as plt
+
+def visualize_inputs(inputs, num_cameras, label, patient_info):
+    """Visualize the input images for the model"""
+    B, C, H, W = inputs.shape
+    num_channels = C // num_cameras
+    
+    fig, axes = plt.subplots(num_cameras, num_channels, figsize=(12, 4*num_cameras))
+    if num_cameras == 1:
+        axes = axes.reshape(1, -1)
+    
+    inputs_np = inputs.detach().cpu().numpy()
+    
+    for cam in range(num_cameras):
+        for ch in range(num_channels):
+            idx = cam * num_channels + ch
+            if idx < C:
+                ax = axes[cam, ch]
+                img = inputs_np[0, idx, :, :]
+                im = ax.imshow(img, cmap='gray')
+                ax.set_title(f"Camera {cam}, Channel {ch}")
+                ax.axis('off')
+                plt.colorbar(im, ax=ax)
+    
+    fig.suptitle(f"Inputs for {patient_info} - Label {label}", fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.show()
 
 def main(args):
     GV.DEVICE = torch.device(f"cuda:{args.num_device}" if torch.cuda.is_available() else "cpu")
@@ -28,9 +55,6 @@ def main(args):
         dir_model = args.model_L
         csv_file = args.csv_file_L
 
-    print(csv_file)
-    print(lst_label)
-    print(dir_model)
     lst_vtkfiles = []
 
 
@@ -39,29 +63,29 @@ def main(args):
     for vtkfile in df['surf']:
         full_vtkfile = os.path.join(args.patient_path, vtkfile)
         lst_vtkfiles.append(full_vtkfile)
-    
-    print(len(lst_vtkfiles))
 
     for path_vtk in lst_vtkfiles:
         num_patient = os.path.basename(path_vtk).split('.')[0].split('_')[0]
-        print(f"prediction for patient {num_patient} :", path_vtk )
+        scan_period = os.path.basename(path_vtk).split('.')[0].split('_')[1]
+        print(f"prediction for patient {num_patient}_{scan_period} :", path_vtk )
         groupe_data = {}
         
         for label in lst_label:
             model = os.path.join(dir_model,f"best_metric_model.pth")
-            print("Loading model :", model, "for patient :", num_patient, "label :", label)
+            print("Loading model :", model, "for patient :", num_patient,"_",scan_period, " label :", label)
             phong_renderer,mask_renderer = GenPhongRenderer(args.image_size,args.blur_radius,args.faces_per_pixel,GV.DEVICE)
 
             agent = Agent(
                 renderer=phong_renderer,
                 renderer2=mask_renderer,
                 radius=args.sphere_radius,
+                camera_positions=GV.dic_cam[args.lm_type][GV.SELECTED_JAW]
             )
 
             SURF = ReadSurf(path_vtk)    
             surf_unit, mean_arr, scale_factor= ScaleSurf(SURF)
             (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
-     
+            total_in_channels = 20 if args.lm_type == "O" else 48
             if int(label) in RI.squeeze(0):
                 agent.position_agent(RI,V,label)
                 textures = TexturesVertex(verts_features=CN)
@@ -72,10 +96,10 @@ def main(args):
                             ).to(GV.DEVICE)
                 images_model , tens_pix_to_face_model=  agent.get_view_rasterize(meshe) #[batch,num_ima,channels,size,size] torch.Size([1, 2, 4, 224, 224])
                 tens_pix_to_face_model = tens_pix_to_face_model.permute(1,0,4,2,3) #tens_pix_to_face : torch.Size([1, 2, 1, 224, 224])
-                       
+                
                 net = UNet(
                     spatial_dims=2,
-                    in_channels=20,
+                    in_channels=total_in_channels,
                     out_channels=4,
                     channels=( 16, 32, 64, 128, 256, 512),
                     strides=(2, 2, 2, 2, 2),
@@ -85,6 +109,11 @@ def main(args):
                 # Reshape inputs to match training format: [batch, num_cameras*channels, H, W]
                 B, Cam, C, H, W = images_model.shape
                 inputs = images_model.reshape(B, Cam * C, H, W).to(dtype=torch.float32).to(GV.DEVICE)
+                
+                # Visualize the inputs
+                patient_info = f"{num_patient}_{scan_period}"
+                # visualize_inputs(inputs, Cam, label, patient_info)
+                
                 net.load_state_dict(torch.load(model, weights_only=True))
                 images_pred = net(inputs)
 
@@ -126,19 +155,12 @@ def main(args):
                 last_num_faces_r = remove_extra_faces(F,num_faces_r,RI,int(label))
                 last_num_faces_g = remove_extra_faces(F,num_faces_g,RI,int(label))
                 last_num_faces_b = remove_extra_faces(F,num_faces_b,RI,int(label))       
-               
-                # print(F.shape,RI.shape)
-                # print(F)
-                # print(RI)
-                # print("")
-                # print(last_num_faces_r)
-                # print('num_faces_r',len(num_faces_r))
-                # print('last_num_faces_r',len(last_num_faces_r))
 
                 dico_rgb = {}
-                dico_rgb[f'{GV.LABEL[label][0]}'] = last_num_faces_r
-                dico_rgb[f'{GV.LABEL[label][1]}'] = last_num_faces_g
-                dico_rgb[f'{GV.LABEL[label][2]}'] = last_num_faces_b
+                dico_rgb[f'{GV.dic_label[args.lm_type][label][0]}'] = last_num_faces_r
+                dico_rgb[f'{GV.dic_label[args.lm_type][label][1]}'] = last_num_faces_g
+                if args.lm_type == 'O':
+                    dico_rgb[f'{GV.dic_label[args.lm_type][label][2]}'] = last_num_faces_b
                 
                 
                 locator = vtk.vtkOctreePointLocator()
@@ -184,8 +206,9 @@ def main(args):
         # copy_json_file =  os.path.join(out_path_jaw,os.path.basename(landmark_path))
         # final_outpath_json = shutil.copy(landmark_path,copy_json_file)
         # final_out_path = shutil.copytree(path_vtk,out_path_L)
-
-        WriteJson(lm_lst,os.path.join(out_path,f"Upper_{num_patient}_Pred.json"))
+        jaw_path = "Upper" if args.jaw == "U" else "Lower"
+        lm_type_path = "C" if args.lm_type == "C" else "O"
+        WriteJson(lm_lst,os.path.join(out_path,f"{jaw_path}_{num_patient}_{scan_period}_Pred_{lm_type_path}.json"))
 
 
 
@@ -206,19 +229,20 @@ if __name__ == '__main__':
     input_param = parser.add_argument_group('input files')
     # input_param.add_argument('--model_teeth', type=str, help='path of 3D model of the teeth of 1 patient', default='/home/jonas/Desktop/Baptiste_Baquero/data_ALIDDM/data/patients/P20/Lower/Lower_P20.vtk')
     # input_param.add_argument('--vtk_dir', type=str, help='path of 3D model of the teeth of 1 patient', default='/home/luciacev-admin/Desktop/Baptiste_Baquero/Project/ALIDDM/data/Upper_jaw_lab')
-    input_param.add_argument('--csv_file_L', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_lower_test.csv')
-    input_param.add_argument('--csv_file_U', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_upper_test.csv')
+    input_param.add_argument('--csv_file_L', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_lower_test_O.csv')
+    input_param.add_argument('--csv_file_U', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_upper_test_O.csv')
     input_param.add_argument('--patient_path', type=str, help='path of the patient folder', default='/home/luciacev/Desktop/training ios files/all data')
 
     # input_param.add_argument('--model_teeth', type=str, help='path of 3D model of the teeth of 1 patient', default='/Users/luciacev-admin/Desktop/data_ALIDDM/data/Patients /P3/Lower/Lower_P3.vtk')
     # input_param.add_argument('--jsonfile', type=str, help='path of jsonfile of the teeth of 1 patient', default='/home/jonas/Desktop/Baptiste_Baquero/data_ALIDDM/data/patients/P10/Lower/Lower_P10.json')
 
     # Model directories
-    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Upper/fold_0')
-    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Lower/fold_0')
+    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Upper/Occlusal/fold_0')
+    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Lower/Occlusal/fold_0')
 
     # Environment
-    input_param.add_argument('--jaw',type=str,help="Prepare the data for uper or lower landmark training (ex: L U)", default="L")
+    input_param.add_argument('--jaw',type=str,help="Prepare the data for uper or lower landmark training (ex: L U)", default="U")
+    input_param.add_argument('--lm_type',type=str,help="Prepare the data for cervical or occlusal landmark training (ex: O C)", default="O")
     input_param.add_argument('--sphere_radius', type=float, help='Radius of the sphere with all the cameras', default=0.2)
    
     input_param.add_argument('--label_L', type=list, help='label of the teeth',default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])

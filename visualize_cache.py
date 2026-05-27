@@ -40,10 +40,11 @@ def visualize_patient(patient_name, label, jawtype='L', lm_typ='O', fold_idx=Non
         cache_type: 'train' or 'val', auto-detect if None
     """
     # Determine number of cameras based on landmark type
+    region_str = 'cervical' if lm_typ=='C' else 'occlusal'
     n_cameras = 5 if lm_typ.upper() == 'O' else 12
     
     # Load input from global cache
-    input_dir = os.path.join(CACHE_BASE_DIR,"cervical", f'global_inputs_{jawtype}')
+    input_dir = os.path.join(CACHE_BASE_DIR,region_str, f'global_inputs_{jawtype}')
     input_file = f"input_{patient_name}_{label}.pth"
     input_path = os.path.join(input_dir, input_file)
     
@@ -55,14 +56,14 @@ def visualize_patient(patient_name, label, jawtype='L', lm_typ='O', fold_idx=Non
     # Auto-detect fold and cache_type if not specified
     target_path = None
     if fold_idx is not None and cache_type is not None:
-        target_dir = os.path.join(CACHE_BASE_DIR,"cervical", f'fold_{fold_idx}_targets_{cache_type}_{jawtype}_{lm_typ}')
+        target_dir = os.path.join(CACHE_BASE_DIR,region_str, f'fold_{fold_idx}_targets_{cache_type}_{jawtype}_{lm_typ}')
         target_file = f"target_{patient_name}_{label}.pth"
         target_path = os.path.join(target_dir, target_file)
     else:
         # Search for target in all folds and cache types
         for fi in range(5):
             for ct in ['train', 'val']:
-                target_dir = os.path.join(CACHE_BASE_DIR,"cervical", f'fold_{fi}_targets_{ct}_{jawtype}_{lm_typ}')
+                target_dir = os.path.join(CACHE_BASE_DIR,region_str, f'fold_{fi}_targets_{ct}_{jawtype}_{lm_typ}')
                 target_file = f"target_{patient_name}_{label}.pth"
                 test_path = os.path.join(target_dir, target_file)
                 if os.path.exists(test_path):
@@ -131,9 +132,10 @@ def visualize_patient(patient_name, label, jawtype='L', lm_typ='O', fold_idx=Non
     plt.tight_layout()
     plt.show()
 
-def list_available_patients(jawtype='L'):
+def list_available_patients(jawtype='L',region = 'O'):
     """List all available patients in the global input cache."""
-    input_dir = os.path.join(CACHE_BASE_DIR,"cervical", f'global_inputs_{jawtype}')
+    region_str = 'cervical' if region=='C' else 'occlusal'
+    input_dir = os.path.join(CACHE_BASE_DIR,region_str, f'global_inputs_{jawtype}')
     files = get_cached_files(input_dir)
     
     # Extract unique patient names
@@ -159,7 +161,7 @@ def main():
     cache_type = 'train'
     
     # List available patients
-    patients = list_available_patients(jawtype)
+    patients = list_available_patients(jawtype,lm_typ)
     print(f"\n✅ Found {len(patients)} unique patients in {jawtype} jaw cache")
     print(f"   First 5 patients: {patients[:5]}")
     

@@ -287,6 +287,7 @@ def main(args):
     print("               ALIDDM CROSS-VALIDATION TRAINING")
     print("="*80)
     main_start_time = time.time()
+    batch_siz = 16 if args.lm_typ == "O" else 4
     
     GV.SELECTED_JAW = args.jaw
     if args.num_device == '-1' or not torch.cuda.is_available():
@@ -322,7 +323,7 @@ def main(args):
     
     all_dataloader = DataLoader(
         all_data,
-        batch_size=args.batch_size,
+        batch_size=batch_siz,
         shuffle=False,
         collate_fn=pad_verts_faces,
         num_workers=min(8, os.cpu_count() or 4),
@@ -374,7 +375,7 @@ def main(args):
         optimal_workers = min(8, os.cpu_count() or 4)
         train_dataloader = DataLoader(
             train_data, 
-            batch_size=args.batch_size, 
+            batch_size=batch_siz, 
             shuffle=True, 
             collate_fn=pad_verts_faces,
             num_workers=optimal_workers,
@@ -385,7 +386,7 @@ def main(args):
 
         val_dataloader = DataLoader(
             val_data, 
-            batch_size=args.batch_size, 
+            batch_size=batch_siz, 
             shuffle=False,
             collate_fn=pad_verts_faces,
             num_workers=optimal_workers,
@@ -400,7 +401,7 @@ def main(args):
             radius=args.sphere_radius,
             camera_positions=GV.dic_cam[lm_suffix][GV.SELECTED_JAW],
         )
-        print(f"[{fold_idx+1}/5] DataLoaders created | Batch size: {args.batch_size}")
+        print(f"[{fold_idx+1}/5] DataLoaders created | Batch size: {batch_siz}")
         print(f"[{fold_idx+1}/5] Landmark type: {args.lm_typ.upper()} ({'Occlusal+MB+DB' if args.lm_typ.lower()=='o' else 'Cervical Lingual+Buccal'})")
         pre_render_all_inputs_and_targets(train_dataloader, agent, lst_label, fold_idx, GV.SELECTED_JAW, lm_typ=args.lm_typ, cache_type='train')
         pre_render_all_inputs_and_targets(val_dataloader, agent, lst_label, fold_idx, GV.SELECTED_JAW, lm_typ=args.lm_typ, cache_type='val')
@@ -519,7 +520,7 @@ if __name__ == '__main__':
     input_param.add_argument('--csv_folder', type=str, help='Folder containing CSV folds for cross-validation', default='/home/luciacev/Desktop/training ios files/all data/csv files')
 
     input_param.add_argument('-j','--jaw', type=str, default="L")
-    input_param.add_argument('-lm', '--lm_typ', type=str, default="O", choices=['O', 'C'], help="Landmark type: 'O' for Occlusal (O+MB+DB, 3 landmarks) or 'C' for Cervical (CL+CB, 2 landmarks)")
+    input_param.add_argument('-lm', '--lm_typ', type=str, default="C", choices=['O', 'C'], help="Landmark type: 'O' for Occlusal (O+MB+DB, 3 landmarks) or 'C' for Cervical (CL+CB, 2 landmarks)")
     input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.2)
     input_param.add_argument('--lst_label_l', type=list, default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])
     input_param.add_argument('--lst_label_u', type=list, default=["2","3","4","5","6","7","8","9","10","11","12","13","14","15"])
@@ -529,7 +530,7 @@ if __name__ == '__main__':
     input_param.add_argument('--blur_radius', type=int, default=0)
     input_param.add_argument('--faces_per_pixel', type=int, default=1)
     
-    input_param.add_argument('-bs', '--batch_size', type=int, default=4, help='Batch size (reduced for pre-rendering to avoid CUDA OOM)')
+    input_param.add_argument('-bs', '--batch_size', type=int, default=4)
     input_param.add_argument('-nc', '--num_classes', type=int, default=4)
     input_param.add_argument('-me', '--max_epoch', type=int, default=300)
     input_param.add_argument('-vf', '--val_freq', type=int, default=1)
