@@ -8,7 +8,7 @@ import time
 import os
 
 # Global cache directory for all cache files
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
 
 def Model(in_channels, out_channels):
     """Create UNet model with specified channels."""
@@ -125,7 +125,7 @@ def Training(train_dataloader, train_data, agent, epoch, nb_epoch, model, optimi
     print(f"✓ EPOCH {epoch+1} COMPLETE | Avg Loss: {avg_loss:.4f} | Time: {elapsed_time:.2f}s")
     writer.add_scalar("training_loss", avg_loss, epoch + 1)
 
-def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_metric, best_metric, best_metric_epoch, writer, post_pred, post_true, jawtype, lm_typ='o', metric_values=None, nb_val=0, write_image_interval=1, dir_models=None, loss_function=None, fold_idx=0):
+def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_metric, best_metric, best_metric_epoch, writer, post_pred, post_true, jawtype, lm_typ='o', metric_values=None, nb_val=0, write_image_interval=1, dir_models=None, loss_function=None, fold_idx=0,best_loss=float('inf')):
     """
     Validation loop for one epoch.
     Loads pre-cached inputs and targets from disk.
@@ -137,7 +137,6 @@ def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_me
     final_metric = 0
     val_loss = 0
     step = 0
-    best_loss = float('inf')  # Track best loss for this fold
     lm_type_dir = "cervical" if lm_typ == "C" else "occlusal"
     
     # Cache directories for this fold
@@ -247,4 +246,4 @@ def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_me
         writer.add_scalar("validation_mean_dice", metric, epoch + 1)
         writer.add_scalar("validation_loss", avg_val_loss, epoch + 1)
         
-    return best_metric, best_metric_epoch, avg_val_loss
+    return best_metric, best_metric_epoch, avg_val_loss,best_loss

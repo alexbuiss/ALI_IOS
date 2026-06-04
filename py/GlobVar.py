@@ -6,10 +6,6 @@ from scipy import linalg
 global DEVICE 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-global SELECTED_JAW
-SELECTED_JAW = "U"
-
 mapping = {
             'LL7': 18, 'LL6': 19, 'LL5': 20, 'LL4': 21, 'LL3': 22, 'LL2': 23, 'LL1': 24,
             'LR1': 25, 'LR2': 26, 'LR3': 27, 'LR4': 28, 'LR5': 29, 'LR6': 30, 'LR7': 31,
@@ -44,6 +40,31 @@ MODELS_DICT = {
     'O': {'O': 0, 'MB': 1, 'DB': 2},
     'C': {'CL': 0, 'CB': 1}
 }
+import numpy as np
+
+def generate_elliptical_360(n_cameras=12, height_angle=0.4):
+    """
+    Génère N caméras réparties sur une trajectoire elliptique pour compenser
+    le fait que la dent soit plus large sur l'axe X que sur l'axe Y.
+    """
+    cam_points = []
+    angles = np.linspace(0, 2 * np.pi, n_cameras, endpoint=False)
+    
+    # Coeffs basés sur tes Verts bounds (X est ~1.25 fois plus grand que Y)
+    scale_x = 1.25
+    scale_y = 1.00
+    
+    for angle in angles:
+        # On déforme le cercle en ellipse
+        x = np.cos(angle) * scale_x
+        y = np.sin(angle) * scale_y
+        z = height_angle
+        
+        cam_points.append([x, y, z])
+        
+    cam_points = np.array(cam_points)
+    # On normalise ensuite pour garder des vecteurs unitaires propres
+    return cam_points / np.linalg.norm(cam_points, axis=1, keepdims=True)
 
 global dic_cam
 
@@ -66,35 +87,81 @@ dic_cam = {
         ])
     },
     'C': {
-        'L': np.array([
-            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-            np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-            np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-            np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-            np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
-            np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
-            np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
-            np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
-            np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
-            np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
-        ]),
-        'U': np.array([
-            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-            np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-            np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-            np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-            np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
-            np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
-            np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
-            np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
-            np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
-            np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
-        ])
+        'U': generate_elliptical_360(n_cameras=12, height_angle=0.4),  # Pour Upper
+        'L': generate_elliptical_360(n_cameras=12, height_angle=-0.4) # Pour Lower
     }
+    # 'C': {
+    #     'L': np.array([
+    #         np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+    #         np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+    #         np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+    #         np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+    #         np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+    #         np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+    #         np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
+    #         np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
+    #         np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
+    #         np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
+    #         np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
+    #         np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
+    #     ]),
+    #     'U': np.array([
+    #         np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+    #         np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+    #         np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+    #         np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+    #         np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+    #         np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+    #         np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
+    #         np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
+    #         np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
+    #         np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
+    #         np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
+    #         np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
+    #     ])
+    # }
+#     'C': {
+#         'L': np.array([
+#             # Niveau z = 0 (8 positions)
+#             np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+#             np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+#             np.array([0, 1, 0]) / linalg.norm([0, 1, 0]),
+#             np.array([0, -1, 0]) / linalg.norm([0, -1, 0]),
+#             np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+#             np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+#             np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+#             np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+#             # Niveau z = 0.5 (8 positions)
+#             np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
+#             np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
+#             np.array([0, 1, 0.5]) / linalg.norm([0, 1, 0.5]),
+#             np.array([0, -1, 0.5]) / linalg.norm([0, -1, 0.5]),
+#             np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
+#             np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
+#             np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
+#             np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
+#         ]),
+#         'U': np.array([
+#             # Niveau z = 0 (8 positions)
+#             np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+#             np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+#             np.array([0, 1, 0]) / linalg.norm([0, 1, 0]),
+#             np.array([0, -1, 0]) / linalg.norm([0, -1, 0]),
+#             np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+#             np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+#             np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+#             np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+#             # Niveau z = -0.5 (8 positions)
+#             np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
+#             np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
+#             np.array([0, 1, -0.5]) / linalg.norm([0, 1, -0.5]),
+#             np.array([0, -1, -0.5]) / linalg.norm([0, -1, -0.5]),
+#             np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
+#             np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
+#             np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
+#             np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
+#         ])
+#     }
 }
 
 

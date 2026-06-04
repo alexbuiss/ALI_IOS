@@ -22,14 +22,15 @@ from vtk import vtkMatrix3x3
 import vtk
 
 # Global cache directory for VTK geometry
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
 
 class FlyByDataset(Dataset):
-    def __init__(self, df, device, dataset_dir='', rotate=False, cache_dir=None, landmark_type='O'):
+    def __init__(self, df, device, dataset_dir='', rotate=False, cache_dir=None, landmark_type='O', jaw='L'):
         self.df = df
         self.dataset_dir = dataset_dir
         self.rotate = rotate
         self.landmark_type = landmark_type  # 'O' for Occlusal or 'C' for Cervical
+        self.jaw = jaw  # 'L' for Lower or 'U' for Upper
         
         # Use default cache directory based on landmark type
         if cache_dir is None:
@@ -92,8 +93,8 @@ class FlyByDataset(Dataset):
         
         color_normals = torch.from_numpy(vtk_to_numpy(GetColorArray(surf, "Normals"))/255.0).float()
         
-        # Landmarks positions - use correct camera based on landmark type
-        cam_pos = GV.dic_cam[self.landmark_type][GV.SELECTED_JAW]
+        # Landmarks positions - use correct camera based on landmark type and jaw
+        cam_pos = GV.dic_cam[self.landmark_type][self.jaw]
         # For now, we'll use the first camera position as the main one
         angle = 0
         vector = cam_pos[0] if isinstance(cam_pos[0], np.ndarray) else np.array(cam_pos[0])
@@ -123,7 +124,7 @@ class FlyByDataset(Dataset):
         data = json.load(open(landmark_path))
         markups = data['markups']
         landmarks_lst = markups[0]['controlPoints']
-        lst_lm = GV.LANDMARKS[GV.SELECTED_JAW]
+        lst_lm = GV.LANDMARKS[self.jaw]
         landmarks_position = np.zeros([len(lst_lm), 3])
         
         found_count = 0

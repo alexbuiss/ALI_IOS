@@ -4,13 +4,18 @@ Visualize cached inputs and targets from disk.
 Shows 5 camera views side by side for a selected patient.
 """
 import os
+import sys
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import numpy as np
 
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache'
+# Add py folder to path to import GlobVar
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'py'))
+import GlobVar as GV
+
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
 
 def get_cached_files(cache_dir):
     """List all cached files in a directory."""
@@ -41,7 +46,7 @@ def visualize_patient(patient_name, label, jawtype='L', lm_typ='O', fold_idx=Non
     """
     # Determine number of cameras based on landmark type
     region_str = 'cervical' if lm_typ=='C' else 'occlusal'
-    n_cameras = 5 if lm_typ.upper() == 'O' else 12
+    n_cameras = len(GV.dic_cam[lm_typ.upper()][jawtype])
     
     # Load input from global cache
     input_dir = os.path.join(CACHE_BASE_DIR,region_str, f'global_inputs_{jawtype}')
@@ -170,7 +175,7 @@ def main():
         return
     
     # Select first patient and all teeth
-    patient_name = patients[0]
+    patient_name = patients[3]
     print(f"\n📋 Visualizing patient: {patient_name}")
     
     # List available teeth for this patient

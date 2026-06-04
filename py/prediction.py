@@ -44,9 +44,9 @@ def visualize_inputs(inputs, num_cameras, label, patient_info):
 
 def main(args):
     GV.DEVICE = torch.device(f"cuda:{args.num_device}" if torch.cuda.is_available() else "cpu")
-    GV.SELECTED_JAW = args.jaw
+    jaw = args.jaw
     
-    if GV.SELECTED_JAW == "U":
+    if jaw == "U":
         lst_label = args.label_U
         dir_model = args.model_U
         csv_file = args.csv_file_U
@@ -79,13 +79,16 @@ def main(args):
                 renderer=phong_renderer,
                 renderer2=mask_renderer,
                 radius=args.sphere_radius,
-                camera_positions=GV.dic_cam[args.lm_type][GV.SELECTED_JAW]
+                camera_positions=GV.dic_cam[args.lm_type][jaw]
             )
 
             SURF = ReadSurf(path_vtk)    
             surf_unit, mean_arr, scale_factor= ScaleSurf(SURF)
             (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
-            total_in_channels = 20 if args.lm_type == "O" else 48
+            num_cameras = len(GV.dic_cam[args.lm_type][jaw])
+            channels_per_camera = 4  # RGB (3) + Z (1) = 4 channels per camera
+            out = 4 if args.lm_type=='O' else 3
+            total_in_channels = num_cameras * channels_per_camera
             if int(label) in RI.squeeze(0):
                 agent.position_agent(RI,V,label)
                 textures = TexturesVertex(verts_features=CN)
@@ -94,13 +97,13 @@ def main(args):
                             faces=F, 
                             textures=textures
                             ).to(GV.DEVICE)
-                images_model , tens_pix_to_face_model=  agent.get_view_rasterize(meshe) #[batch,num_ima,channels,size,size] torch.Size([1, 2, 4, 224, 224])
+                images_model , tens_pix_to_face_model=  agent.get_view_rasterize(meshe, args.jaw) #[batch,num_ima,channels,size,size] torch.Size([1, 2, 4, 224, 224])
                 tens_pix_to_face_model = tens_pix_to_face_model.permute(1,0,4,2,3) #tens_pix_to_face : torch.Size([1, 2, 1, 224, 224])
                 
                 net = UNet(
                     spatial_dims=2,
                     in_channels=total_in_channels,
-                    out_channels=4,
+                    out_channels=out,
                     channels=( 16, 32, 64, 128, 256, 512),
                     strides=(2, 2, 2, 2, 2),
                     num_res_units=4
@@ -131,14 +134,13 @@ def main(args):
                 
                 pred_data = images_pred.detach().cpu().unsqueeze(0).type(torch.int16) #torch.Size([1, 2, 2, 224, 224])
                 pred_data = torch.argmax(pred_data, dim=2).unsqueeze(2)
-                
-                
       
                 # recover where there is the landmark in the image
                 index_label_land_r = (pred_data==1.).nonzero(as_tuple=False) #torch.Size([6252, 5])
                 index_label_land_g = (pred_data==2.).nonzero(as_tuple=False) #torch.Size([6252, 5])
                 index_label_land_b = (pred_data==3.).nonzero(as_tuple=False) #torch.Size([6252, 5])
 
+                print(f"Number of predicted landmark pixels for label {label} - Red: {len(index_label_land_r)}, Green: {len(index_label_land_g)}, Blue: {len(index_label_land_b)}")
                 # recover the face in my mesh 
                 num_faces_r = []
                 num_faces_g = []
@@ -237,13 +239,13 @@ if __name__ == '__main__':
     # input_param.add_argument('--jsonfile', type=str, help='path of jsonfile of the teeth of 1 patient', default='/home/jonas/Desktop/Baptiste_Baquero/data_ALIDDM/data/patients/P10/Lower/Lower_P10.json')
 
     # Model directories
-    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Upper/Occlusal/fold_0')
-    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Lower/Occlusal/fold_0')
+    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/3channelsout_cam_models/Upper/Cervical/fold_0')
+    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/3channelsout_cam_models/Lower/Cervical/fold_0')
 
     # Environment
     input_param.add_argument('--jaw',type=str,help="Prepare the data for uper or lower landmark training (ex: L U)", default="U")
-    input_param.add_argument('--lm_type',type=str,help="Prepare the data for cervical or occlusal landmark training (ex: O C)", default="O")
-    input_param.add_argument('--sphere_radius', type=float, help='Radius of the sphere with all the cameras', default=0.2)
+    input_param.add_argument('--lm_type',type=str,help="Prepare the data for cervical or occlusal landmark training (ex: O C)", default="C")
+    input_param.add_argument('--sphere_radius', type=float, help='Radius of the sphere with all the cameras', default=0.25)
    
     input_param.add_argument('--label_L', type=list, help='label of the teeth',default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])
     input_param.add_argument('--label_U', type=list, help='label of the teeth',default=(["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]))

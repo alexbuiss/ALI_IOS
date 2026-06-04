@@ -27,7 +27,7 @@ def run_training(jaw_type, lm_type):
     print("="*80 + "\n")
     
     # Determine the models directory based on jaw type
-    models_dir = f'/home/luciacev/Desktop/training ios files/all data/models/{jaw_name}/{lm_name}'
+    models_dir = f'/home/luciacev/Desktop/training ios files/all data/3channelsout_cam_models/{jaw_name}/{lm_name}'
     
     # Build the command
     cmd = [
@@ -65,10 +65,10 @@ def main():
     
     # Define all training configurations
     configs = [
-        ('L', 'C', "Lower Jaw + Cervical"),
-        ('L', 'O', "Lower Jaw + Occlusal"),
+        # ('L', 'C', "Lower Jaw + Cervical"),
+        # ('L', 'O', "Lower Jaw + Occlusal"),
         ('U', 'C', "Upper Jaw + Cervical"),
-        ('U', 'O', "Upper Jaw + Occlusal"),
+        # ('U', 'O', "Upper Jaw + Occlusal"),
     ]
     
     results = {}

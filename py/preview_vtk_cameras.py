@@ -33,7 +33,7 @@ if __name__ == '__main__':
         pass
 
 
-def preview_with_dataloader(dataloader, agent, lst_label, output_dir=None, limit_samples=5):
+def preview_with_dataloader(dataloader, agent, lst_label,lm_type, output_dir=None, limit_samples=5):
     """
     Preview VTK files using the dataloader - exactly like main.py does it.
     
@@ -100,7 +100,7 @@ def preview_with_dataloader(dataloader, agent, lst_label, output_dir=None, limit
                     agent.positions = agent.position_agent(RI_single, V_single, label)
                     
                     # Render inputs - exactly like main.py line 214
-                    inputs_raw = agent.GetView(mesh_input)  # [1, Cam, C, H, W]
+                    inputs_raw = agent.GetView(mesh_input,lm_type)  # [1, Cam, C, H, W]
                     images_np = inputs_raw[0].cpu().numpy()  # [Cam, C, H, W]
                     
                     print(f"    ✓ Rendered {n_cameras} camera views (shape: {images_np.shape})")
@@ -224,9 +224,6 @@ def setup_agent_and_renderer(jaw_type='Lower', landmark_type='O', image_size=224
     """
     print(f"\nSetting up renderers for {jaw_type} jaw ({landmark_type})...")
     
-    # Set global variables
-    GV.SELECTED_JAW = jaw_type
-    
     # Setup renderers using GenPhongRenderer - exactly like main.py line 303
     phong_renderer, mask_renderer = GenPhongRenderer(image_size, blur_radius, faces_per_pixel, GV.DEVICE)
     print(f"  ✓ Renderers initialized | Image size: {image_size}x{image_size}")
@@ -273,7 +270,7 @@ def main():
     input_param.add_argument('--image_size', type=int, default=224)
     input_param.add_argument('--blur_radius', type=int, default=0)
     input_param.add_argument('--faces_per_pixel', type=int, default=1)
-    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.2,
+    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.25,
                             help='Sphere radius for camera positioning (default: 0.2)')
     input_param.add_argument('-bs', '--batch_size', type=int, default=4)
     
@@ -299,9 +296,6 @@ def main():
     print(f"Device: {GV.DEVICE}")
     print(f"Jaw type: {args.jaw}")
     print(f"Landmark type: {args.lm_typ}")
-    
-    # Set global jaw
-    GV.SELECTED_JAW = args.jaw
     
     # Determine labels to preview
     if args.labels:
@@ -349,7 +343,7 @@ def main():
     )
     
     # Preview with dataloader
-    preview_with_dataloader(dataloader, agent, lst_label, args.output_dir, args.limit)
+    preview_with_dataloader(dataloader, agent, lst_label, args.jaw,args.output_dir, args.limit)
     
     print("✓ Preview completed!")
 

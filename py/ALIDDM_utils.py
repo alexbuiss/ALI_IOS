@@ -9,7 +9,6 @@ import vtk
 import torch
 import pandas as pd
 import GlobVar as GV
-from GlobVar import SELECTED_JAW
 from utils import ReadSurf
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 import numpy as np
@@ -35,8 +34,8 @@ import torchvision.transforms as transforms
 from shader import *
 from post_process import NeighborPoints
 
-def GetLandmarkPosFromLP(lm_pos, target):
-    lst_lm = GV.LANDMARKS[GV.SELECTED_JAW]
+def GetLandmarkPosFromLP(lm_pos, target, jaw):
+    lst_lm = GV.LANDMARKS[jaw]
     # Vérifie si la target existe dans la liste globale
     # print(target,lm_pos)
     if target not in lst_lm:
@@ -48,8 +47,8 @@ def GetLandmarkPosFromLP(lm_pos, target):
         idx = lst_lm.index(target)
         coord = lst[idx].unsqueeze(0)
         # DEBUG: Est-ce que le point extrait est nul ?
-        # if coord.abs().sum() < 1e-5:
-            #  print(f"DEBUG: Point nul extrait pour {target}, patient {i}")
+        if coord.abs().sum() < 1e-5:
+             print(f"DEBUG: Point nul extrait pour {target}, patient {i}")
         lm_coord = torch.cat((lm_coord, coord.cpu()), dim=0)
 
     return lm_coord
@@ -85,7 +84,7 @@ def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
     return phong_renderer,mask_renderer
     
 
-def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O'):
+def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O', jaw='L'):
     """
     Generate training and validation datasets from a DataFrame.
     
@@ -98,25 +97,25 @@ def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O'):
         flyBy: Dataset class (FlyByDataset)
         device: Device to use ('cpu' or 'cuda')
         landmark_type: 'O' for Occlusal or 'C' for Cervical
+        jaw: 'L' for Lower or 'U' for Upper
     
     Returns:
         (dataset, None) - For cross-validation, returns dataset and None
     """
-    SELECTED_JAW = GV.SELECTED_JAW
-    
     # Check if this is legacy mode with 'for' column or cross-validation mode
     if 'for' in df.columns:
         # Legacy mode: split by 'for' column
         df_train = df.loc[df['for'] == "train"]
-        df_train = df_train.loc[df_train['jaw'] == SELECTED_JAW]
+        df_train = df_train.loc[df_train['jaw'] == jaw]
         df_val = df.loc[df['for'] == "val"]
-        df_val = df_val.loc[df_val['jaw'] == SELECTED_JAW]
+        df_val = df_val.loc[df_val['jaw'] == jaw]
         train_data = flyBy(
             df=df_train,
             device=device,
             dataset_dir=dir_patients,
             rotate=False,
-            landmark_type=landmark_type
+            landmark_type=landmark_type,
+            jaw=jaw
         )
 
         val_data = flyBy(
@@ -124,7 +123,8 @@ def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O'):
             device=device,
             dataset_dir=dir_patients,
             rotate=False,
-            landmark_type=landmark_type
+            landmark_type=landmark_type,
+            jaw=jaw
         )
 
         return train_data, val_data
@@ -136,7 +136,8 @@ def GenDataSet(df, dir_patients, flyBy, device, landmark_type='O'):
             device=device,
             dataset_dir=dir_patients,
             rotate=False,
-            landmark_type=landmark_type
+            landmark_type=landmark_type,
+            jaw=jaw
         )
 
         return data, None
@@ -340,10 +341,10 @@ def merge_meshes(verts_1,faces_1,text_1,verts_2,faces_2,text_2):
 
     return verts,faces,text
 
-def Get_lst_landmarks(LP,lst_names_land):
+def Get_lst_landmarks(LP, lst_names_land, jaw):
     lst_landmarks=[]
     for landmarks in lst_names_land:
-        lm_coords = GetLandmarkPosFromLP(LP,landmarks)
+        lm_coords = GetLandmarkPosFromLP(LP, landmarks, jaw)
         lst_landmarks.append(lm_coords)
     return lst_landmarks
 
@@ -395,23 +396,23 @@ def Convert_RGB_to_grey(lst_images):
 
     return tens_images
 
-def Gen_patch(V, RED, LP, label, radius, batch_idx, lm_typ='o'):
+def Gen_patch(V, RED, LP, label, radius, batch_idx, jaw, lm_typ='o'):
     V_coords = V[0].to(GV.DEVICE)
     # Filtre pour ignorer les points de padding (0,0,0) de la dent
     real_surface_mask = torch.linalg.norm(V_coords, dim=1) > 1e-4
 
-    lst_landmarks = Get_lst_landmarks(LP, GV.dic_label[lm_typ][label])
-    # print("liste landmarks",lm_typ,label)
+    lst_landmarks = Get_lst_landmarks(LP, GV.dic_label[lm_typ][label], jaw)
     # Couleurs pures : R(1,0,0), V(0,1,0), B(0,0,1)
     colors = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=GV.DEVICE)
 
+    colored_landmarks = 0  # Track how many landmarks were actually colored
     for color_index, all_patients_coords in enumerate(lst_landmarks):
         landmark_coord = all_patients_coords[batch_idx].view(1, 3).to(GV.DEVICE)
-        # print("landmark:",landmark_coord)
         
         # SI LE LANDMARK EST À L'ORIGINE (0,0,0), ON SKIP TOTALEMENT
         # C'est ce qui supprimera ton point jaune central.
-        if torch.norm(landmark_coord) < 0.05: 
+        if torch.norm(landmark_coord) < 0.05:
+            print(f"⚠️  Landmark {GV.dic_label[lm_typ][label][color_index]} is missing (all zeros)")
             continue 
             
         distances = torch.cdist(V_coords, landmark_coord, p=2).view(-1)
@@ -419,19 +420,25 @@ def Gen_patch(V, RED, LP, label, radius, batch_idx, lm_typ='o'):
         mask = (distances < radius) & real_surface_mask
         
         if mask.any():
-            # print("on colorie")
+            print("on colorie",len(mask.nonzero()))
             # AFFECTATION DIRECTE (=) et non addition (+=) pour éviter le jaune
             RED[0][mask] = colors[color_index % len(colors)]
+            colored_landmarks += 1
+        else:
+            print(f"⚠️  No vertices colored for landmark {GV.dic_label[lm_typ][label][color_index]}")
+    
+    if colored_landmarks == 0:
+        print(f"⚠️  WARNING: No landmarks were colored for label {label}! Patch will be completely black.")
             
     return RED
 
-def Gen_mesh_patch(surf, V, F, CN, LP, label, batch_idx, lm_typ='o'):
+def Gen_mesh_patch(surf, V, F, CN, LP, label, batch_idx, jaw, lm_typ='o'):
     # INITIALISATION : On force tout à ZÉRO (Noir total)
     # On ne met pas 0.1 ou 0.05, sinon la silhouette de la dent apparaît.
     verts_rgb = torch.zeros_like(V).to(GV.DEVICE) 
     
     # Appel de Gen_patch pour colorier uniquement les landmarks valides
-    patch_region = Gen_patch(V, verts_rgb, LP, label, 0.02, batch_idx, lm_typ=lm_typ)    
+    patch_region = Gen_patch(V, verts_rgb, LP, label, 0.02, batch_idx, jaw, lm_typ=lm_typ)    
     
     # Sécurité : Si Gen_patch échoue, on renvoie le noir
     if patch_region is None: patch_region = verts_rgb

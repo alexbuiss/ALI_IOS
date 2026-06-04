@@ -86,32 +86,27 @@ class Agent:
         return final_pos
 
     
-    def GetView(self, meshes, rend=False):
-        # On s'assure que meshes ne contient qu'UN SEUL patient (taille 1)
-        # Si meshes > 1 ici, c'est là que le mélange commence
+    def GetView(self, meshes,type_lm,rend=False):
         batch_size = len(meshes) 
         n_cameras = len(self.camera_points)
         device = GV.DEVICE
 
-        # On force le spc à correspondre UNIQUEMENT au patient en cours
-        # On prend seulement le premier élément pour éviter les résidus de batch
         spc = self.positions.view(-1, 1, 3)[:batch_size] 
+        offset_z = 0.0#-0.2 if type_lm == "L" else 0.2
+        # print(offset_z)
+        target_offset = torch.tensor([0.0, 0.0, offset_z], device=device).view(1, 1, 3)
+        spc_target = spc + target_offset
         
         cam_points_expanded = self.camera_points.unsqueeze(0).expand(batch_size, -1, -1)
         current_cam_pos = spc + (cam_points_expanded * self.radius)
         
-        R_at = spc.expand(-1, n_cameras, -1).reshape(-1, 3)
+        R_at = spc_target.expand(-1, n_cameras, -1).reshape(-1, 3)
         R_pos = current_cam_pos.reshape(-1, 3)
 
         R = look_at_rotation(R_pos, at=R_at, device=device) 
         T = -torch.bmm(R.transpose(1, 2), R_pos.unsqueeze(-1)).squeeze(-1)
 
-        # On étend le mesh UNIQUE du patient
         batched_meshes = meshes.extend(n_cameras)
-        
-        # Debug: Print dimensions
-        # if batch_size == 1:
-            # print(f"[DEBUG GetView] batch_size={batch_size}, n_cameras={n_cameras}, mesh_verts={batched_meshes.verts_packed().shape}, R={R.shape}, T={T.shape}")
 
         renderer = self.renderer2 if rend else self.renderer
         images = renderer(meshes_world=batched_meshes, R=R, T=T) 
@@ -121,37 +116,47 @@ class Agent:
             return y.view(batch_size, n_cameras, 3, images.shape[1], images.shape[2])
         else:
             rgb = images[:, :, :, :-1].permute(0, 3, 1, 2)
-            # Extract z-buffer for 4th channel
             zbuf = renderer.rasterizer(batched_meshes).zbuf.permute(0, 3, 1, 2)
             y = torch.cat([rgb, zbuf], dim=1) 
             return y.view(batch_size, n_cameras, 4, images.shape[1], images.shape[2])
     
-    def get_view_rasterize(self, meshes):
+    def get_view_rasterize(self, meshes,type_lm):
         """
         OPTIMIZED: Vectorized computation + batch rendering
         """
         spc = self.positions
         batch_size = spc.shape[0]
+        device = GV.DEVICE
+        offset_z = 0.0#-0.2 if type_lm == "L" else 0.2
+        target_offset = torch.tensor([0.0, 0.0, offset_z], device=device)
+        
+        if len(spc.shape) == 2:
+            spc_target = spc + target_offset.view(1, 3)
+        else:
+            spc_target = spc + target_offset.view(1, 1, 3)
         
         all_R = []
         all_T = []
         
-        # Vectorized pre-computation
         for sp in self.camera_points:
             sp_i = sp * self.radius
             current_cam_pos = spc + sp_i
-            R = look_at_rotation(current_cam_pos, at=spc, device=GV.DEVICE)
+            
+            cam_pos_flat = current_cam_pos.view(-1, 3)
+            target_flat = spc_target.view(-1, 3)
+            
+            R = look_at_rotation(cam_pos_flat, at=target_flat, device=device)
             all_R.append(R)
             
-            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]
+            T = -torch.bmm(R.transpose(1, 2), cam_pos_flat[:, :, None])[:, :, 0]
             all_T.append(T)
         
-        img_lst = torch.empty((0)).to(GV.DEVICE)
-        tens_pix_to_face = torch.empty((0)).to(GV.DEVICE)
+        img_lst = torch.empty((0)).to(device)
+        tens_pix_to_face = torch.empty((0)).to(device)
         
         for cam_idx, (R, T) in enumerate(zip(all_R, all_T)):
             renderer = self.renderer
-            images = renderer(meshes_world=meshes, R=R, T=T.to(GV.DEVICE))
+            images = renderer(meshes_world=meshes, R=R, T=T.to(device))
             images = images.permute(0, 3, 1, 2)
             images = images[:, :-1, :, :]
             

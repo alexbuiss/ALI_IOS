@@ -25,7 +25,7 @@ from training import Model, Training, Validation
 from ALIDDM_utils import Gen_Full_Mask_Mesh
 
 # Global cache directory for all cache files
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
 
 # Configure multiprocessing for CUDA/PyTorch3D
 if __name__ == '__main__':
@@ -211,7 +211,7 @@ def pre_render_all_inputs_only(dataloader, agent, lst_label, jawtype,lm_type):
                     agent.positions = agent.position_agent(RI_single, V_single, label)
                     
                     # Render INPUTS (no landmarks)
-                    inputs_raw = agent.GetView(mesh_input)  # [1, Cam, C, H, W]
+                    inputs_raw = agent.GetView(mesh_input,args.jaw)  # [1, Cam, C, H, W]
                     
                     # Save per patient
                     patient_name = os.path.basename(S[patient_idx]).split('.')[0]
@@ -266,13 +266,14 @@ def pre_render_all_inputs_and_targets(dataloader, agent, lst_label, fold_idx, ja
                         F_i = F_gpu[i:i+1].detach().clone()
                         
                         # On génère le mesh
-                        mesh_target = Gen_mesh_patch(S, V_i, F_i, CN_gpu[i:i+1], LP, label, batch_idx=i, lm_typ=lm_typ)
+                        # print(LP)
+                        mesh_target = Gen_mesh_patch(S, V_i, F_i, CN_gpu[i:i+1], LP, label, batch_idx=i, jaw=jawtype, lm_typ=lm_typ)
                         
                         # On donne à l'agent SEULEMENT les positions du patient i
                         agent.positions = all_positions[i:i+1].detach().clone()
                         
                         # On lance le rendu pour ce patient SEUL
-                        targets_raw = agent.GetView(mesh_target, rend=True) 
+                        targets_raw = agent.GetView(mesh_target,args.jaw, rend=True) 
 
                         # Sauvegarde
                         torch.save(targets_raw.squeeze(0).cpu(), target_path)
@@ -289,16 +290,16 @@ def main(args):
     main_start_time = time.time()
     batch_siz = 16 if args.lm_typ == "O" else 4
     
-    GV.SELECTED_JAW = args.jaw
     if args.num_device == '-1' or not torch.cuda.is_available():
         GV.DEVICE = torch.device("cpu")
     else:
         GV.DEVICE = torch.device(f"cuda:{args.num_device}")
     
-    print(f"\n[INIT] Configuration | Device: {GV.DEVICE} | Jaw: {args.jaw} | Landmark type: {args.lm_typ.upper()}")
+    jaw = args.jaw  # Store jaw in local variable
+    print(f"\n[INIT] Configuration | Device: {GV.DEVICE} | Jaw: {jaw} | Landmark type: {args.lm_typ.upper()}")
     
-    lst_label = args.lst_label_u if GV.SELECTED_JAW == "U" else args.lst_label_l
-    jaw_suffix = "upper" if GV.SELECTED_JAW == "U" else "lower"
+    lst_label = args.lst_label_u if jaw == "U" else args.lst_label_l
+    jaw_suffix = "upper" if jaw == "U" else "lower"
 
     phong_renderer, mask_renderer = GenPhongRenderer(args.image_size, args.blur_radius, args.faces_per_pixel, GV.DEVICE)
     print(f"[INIT] Renderers initialized | Image size: {args.image_size}x{args.image_size}")
@@ -319,7 +320,7 @@ def main(args):
     # Remove duplicates (same patient might appear in multiple folds if not properly split)
     df_all = df_all.drop_duplicates(subset=['surf'], keep='first')
     
-    all_data, _ = GenDataSet(df_all, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix)
+    all_data, _ = GenDataSet(df_all, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix, jaw=jaw)
     
     all_dataloader = DataLoader(
         all_data,
@@ -336,16 +337,16 @@ def main(args):
         renderer=phong_renderer,
         renderer2=mask_renderer,
         radius=args.sphere_radius,
-        camera_positions=GV.dic_cam[lm_suffix][GV.SELECTED_JAW],
+        camera_positions=GV.dic_cam[lm_suffix][jaw],
     )
     
-    pre_render_all_inputs_only(all_dataloader, agent_prerender, lst_label, GV.SELECTED_JAW,args.lm_typ)
+    pre_render_all_inputs_only(all_dataloader, agent_prerender, lst_label, jaw, args.lm_typ)
 
     # === CROSS-VALIDATION SETUP ===
     n_folds = 5
     fold_results = {}
     
-    for fold_idx in range(n_folds):
+    for fold_idx in range(1):
         print("\n" + "="*80)
         print(f"                    FOLD {fold_idx + 1}/{n_folds}")
         print("="*80)
@@ -366,8 +367,8 @@ def main(args):
         df_train_list = [pd.read_csv(csv) for csv in train_csvs]
         df_train = pd.concat(df_train_list, ignore_index=True)
         
-        train_data, _ = GenDataSet(df_train, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix)
-        val_data, _ = GenDataSet(df_val, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix)
+        train_data, _ = GenDataSet(df_train, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix, jaw=jaw)
+        val_data, _ = GenDataSet(df_val, args.dir_patients, FlyByDataset, 'cpu', landmark_type=lm_suffix, jaw=jaw)
         
         print(f"[{fold_idx+1}/5] Dataset loaded | Train: {len(train_data)} | Val: {len(val_data)}")
 
@@ -399,18 +400,20 @@ def main(args):
             renderer=phong_renderer,
             renderer2=mask_renderer,
             radius=args.sphere_radius,
-            camera_positions=GV.dic_cam[lm_suffix][GV.SELECTED_JAW],
+            camera_positions=GV.dic_cam[lm_suffix][jaw],
         )
         print(f"[{fold_idx+1}/5] DataLoaders created | Batch size: {batch_siz}")
         print(f"[{fold_idx+1}/5] Landmark type: {args.lm_typ.upper()} ({'Occlusal+MB+DB' if args.lm_typ.lower()=='o' else 'Cervical Lingual+Buccal'})")
-        pre_render_all_inputs_and_targets(train_dataloader, agent, lst_label, fold_idx, GV.SELECTED_JAW, lm_typ=args.lm_typ, cache_type='train')
-        pre_render_all_inputs_and_targets(val_dataloader, agent, lst_label, fold_idx, GV.SELECTED_JAW, lm_typ=args.lm_typ, cache_type='val')
-        
-        num_classes = args.num_classes
-        total_in_channels = 20 if args.lm_typ == "O" else 48
-            
+        pre_render_all_inputs_and_targets(train_dataloader, agent, lst_label, fold_idx, jaw, lm_typ=args.lm_typ, cache_type='train')
+        pre_render_all_inputs_and_targets(val_dataloader, agent, lst_label, fold_idx, jaw, lm_typ=args.lm_typ, cache_type='val')
+
+        num_classes = 4 if args.lm_typ == 'O' else 3
+        num_cameras = len(GV.dic_cam[lm_suffix][jaw])
+        channels_per_camera = 4
+        total_in_channels = num_cameras * channels_per_camera
+
         model = Model(in_channels=total_in_channels, out_channels=num_classes)
-        print(f"[{fold_idx+1}/5] Model initialized | In channels: {total_in_channels} | Out channels: {num_classes}")
+        print(f"[{fold_idx+1}/5] Model initialized | Cameras: {num_cameras} | Channels/camera: {channels_per_camera} | Total in channels: {total_in_channels} | Out channels: {num_classes}")
 
         loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
         optimizer = Adam(model.parameters(), args.learning_rate)
@@ -436,6 +439,7 @@ def main(args):
 
         print(f"[{fold_idx+1}/5] Ready! | Max epochs: {args.max_epoch} | Val frequency: {args.val_freq} | Early stopping patience: {args.early_stopping_patience}")
         print("="*80 + "\n")
+        best_loss = float('inf')
 
         for epoch in range(args.max_epoch):
             epoch_start_time = time.time()
@@ -451,13 +455,13 @@ def main(args):
                 loss_function=loss_function,
                 lst_label=lst_label,
                 writer=writer,
-                jawtype=GV.SELECTED_JAW,
+                jawtype=jaw,
                 lm_typ=args.lm_typ,
                 fold_idx=fold_idx,
             )
 
             if epoch % args.val_freq == 0:        
-                best_metric, best_metric_epoch, val_loss = Validation(
+                best_metric, best_metric_epoch, val_loss,best_loss = Validation(
                     val_dataloader=val_dataloader,
                     epoch=epoch,
                     nb_epoch=args.max_epoch,
@@ -471,13 +475,14 @@ def main(args):
                     writer=writer,
                     write_image_interval=1,
                     post_true=post_true,
-                    jawtype=GV.SELECTED_JAW,
+                    jawtype=jaw,
                     lm_typ=args.lm_typ,
                     post_pred=post_pred,
                     metric_values=metric_values,
                     dir_models=fold_dir_models,
                     loss_function=loss_function,
-                    fold_idx=fold_idx
+                    fold_idx=fold_idx,
+                    best_loss = best_loss
                 )
                 
                 # Check early stopping condition based on validation loss
@@ -521,7 +526,7 @@ if __name__ == '__main__':
 
     input_param.add_argument('-j','--jaw', type=str, default="L")
     input_param.add_argument('-lm', '--lm_typ', type=str, default="C", choices=['O', 'C'], help="Landmark type: 'O' for Occlusal (O+MB+DB, 3 landmarks) or 'C' for Cervical (CL+CB, 2 landmarks)")
-    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.2)
+    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.25)
     input_param.add_argument('--lst_label_l', type=list, default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])
     input_param.add_argument('--lst_label_u', type=list, default=["2","3","4","5","6","7","8","9","10","11","12","13","14","15"])
 
@@ -536,7 +541,7 @@ if __name__ == '__main__':
     input_param.add_argument('-vf', '--val_freq', type=int, default=1)
     input_param.add_argument('-lr', '--learning_rate', type=float, default=1e-4)
     input_param.add_argument('-es', '--early_stopping_patience', type=int, default=20,help='Number of epochs with no improvement before early stopping')
-    input_param.add_argument('--dir_models', type=str, default='/home/luciacev/Desktop/training ios files/all data/models/Lower')
+    input_param.add_argument('--dir_models', type=str, default='/home/luciacev/Desktop/training ios files/all data/models/Upper')
 
     args = parser.parse_args()
     main(args)
