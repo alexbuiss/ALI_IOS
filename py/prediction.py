@@ -115,7 +115,7 @@ def main(args):
                 
                 # Visualize the inputs
                 patient_info = f"{num_patient}_{scan_period}"
-                # visualize_inputs(inputs, Cam, label, patient_info)
+                visualize_inputs(inputs, Cam, label, patient_info)
                 
                 net.load_state_dict(torch.load(model, weights_only=True))
                 images_pred = net(inputs)
@@ -160,7 +160,7 @@ def main(args):
 
                 dico_rgb = {}
                 dico_rgb[f'{GV.dic_label[args.lm_type][label][0]}'] = last_num_faces_r
-                dico_rgb[f'{GV.dic_label[args.lm_type][label][1]}'] = last_num_faces_g
+                # dico_rgb[f'{GV.dic_label[args.lm_type][label][1]}'] = last_num_faces_g
                 if args.lm_type == 'O':
                     dico_rgb[f'{GV.dic_label[args.lm_type][label][2]}'] = last_num_faces_b
                 
@@ -209,7 +209,7 @@ def main(args):
         # final_outpath_json = shutil.copy(landmark_path,copy_json_file)
         # final_out_path = shutil.copytree(path_vtk,out_path_L)
         jaw_path = "Upper" if args.jaw == "U" else "Lower"
-        lm_type_path = "C" if args.lm_type == "C" else "O"
+        lm_type_path = args.lm_type 
         WriteJson(lm_lst,os.path.join(out_path,f"{jaw_path}_{num_patient}_{scan_period}_Pred_{lm_type_path}.json"))
 
 
@@ -231,21 +231,21 @@ if __name__ == '__main__':
     input_param = parser.add_argument_group('input files')
     # input_param.add_argument('--model_teeth', type=str, help='path of 3D model of the teeth of 1 patient', default='/home/jonas/Desktop/Baptiste_Baquero/data_ALIDDM/data/patients/P20/Lower/Lower_P20.vtk')
     # input_param.add_argument('--vtk_dir', type=str, help='path of 3D model of the teeth of 1 patient', default='/home/luciacev-admin/Desktop/Baptiste_Baquero/Project/ALIDDM/data/Upper_jaw_lab')
-    input_param.add_argument('--csv_file_L', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_lower_test_O.csv')
+    input_param.add_argument('--csv_file_L', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/mucogingival/csv files/data_lower_test_MG.csv')
     input_param.add_argument('--csv_file_U', type=str, help='path of the csv', default='/home/luciacev/Desktop/training ios files/all data/csv files/data_upper_test_O.csv')
-    input_param.add_argument('--patient_path', type=str, help='path of the patient folder', default='/home/luciacev/Desktop/training ios files/all data')
+    input_param.add_argument('--patient_path', type=str, help='path of the patient folder', default='/home/luciacev/Desktop/training ios files/mucogingival')
 
     # input_param.add_argument('--model_teeth', type=str, help='path of 3D model of the teeth of 1 patient', default='/Users/luciacev-admin/Desktop/data_ALIDDM/data/Patients /P3/Lower/Lower_P3.vtk')
     # input_param.add_argument('--jsonfile', type=str, help='path of jsonfile of the teeth of 1 patient', default='/home/jonas/Desktop/Baptiste_Baquero/data_ALIDDM/data/patients/P10/Lower/Lower_P10.json')
 
     # Model directories
-    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/3channelsout_cam_models/Upper/Cervical/fold_0')
-    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/3channelsout_cam_models/Lower/Cervical/fold_0')
+    input_param.add_argument('--model_U', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/all data/models/Upper/Cervical/fold_0')
+    input_param.add_argument('--model_L', type=str, help='loading of model', default='/home/luciacev/Desktop/training ios files/mucogingival/models/Lower/fold_0')
 
     # Environment
-    input_param.add_argument('--jaw',type=str,help="Prepare the data for uper or lower landmark training (ex: L U)", default="U")
-    input_param.add_argument('--lm_type',type=str,help="Prepare the data for cervical or occlusal landmark training (ex: O C)", default="C")
-    input_param.add_argument('--sphere_radius', type=float, help='Radius of the sphere with all the cameras', default=0.25)
+    input_param.add_argument('--jaw',type=str,help="Prepare the data for uper or lower landmark training (ex: L U)", default="L")
+    input_param.add_argument('--lm_type',type=str,help="Prepare the data for cervical or occlusal landmark training (ex: O C)", default="MG")
+    input_param.add_argument('--sphere_radius', type=float, help='Radius of the sphere with all the cameras', default=0.2)
    
     input_param.add_argument('--label_L', type=list, help='label of the teeth',default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])
     input_param.add_argument('--label_U', type=list, help='label of the teeth',default=(["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]))
@@ -256,7 +256,7 @@ if __name__ == '__main__':
     input_param.add_argument('--blur_radius',type=int, help='blur raius', default=0)
     input_param.add_argument('--faces_per_pixel',type=int, help='faces per pixels', default=1)
  
-    input_param.add_argument('--out_path',type=str, help='path where jsonfile is saved', default='/home/luciacev/Desktop/training ios files/all data/output')
+    input_param.add_argument('--out_path',type=str, help='path where jsonfile is saved', default='/home/luciacev/Desktop/training ios files/mucogingival/output')
 
     args = parser.parse_args()
     main(args)

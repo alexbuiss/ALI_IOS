@@ -61,7 +61,7 @@ def preview_with_dataloader(dataloader, agent, lst_label,lm_type, output_dir=Non
             
             # Unpack batch - exactly like main.py line 188
             S, V, F, RI, CN, LP, MR, SF = batch_data
-            
+            print(LP)
             # Minimal GPU transfer - exactly like main.py line 191-194
             V_gpu = V.to(GV.DEVICE).float() if not isinstance(V, list) else [v.to(GV.DEVICE).float() for v in V]
             F_gpu = F.to(GV.DEVICE) if not isinstance(F, list) else [f.to(GV.DEVICE) for f in F]
@@ -97,7 +97,7 @@ def preview_with_dataloader(dataloader, agent, lst_label,lm_type, output_dir=Non
                     print(f"\n  → Rendering camera views for tooth {label_str}...")
                     
                     # Position agent - exactly like main.py line 211
-                    agent.positions = agent.position_agent(RI_single, V_single, label)
+                    agent.positions = agent.position_agent(RI_single, V_single,label)
                     
                     # Render inputs - exactly like main.py line 214
                     inputs_raw = agent.GetView(mesh_input,lm_type)  # [1, Cam, C, H, W]
@@ -262,10 +262,10 @@ def main():
     input_param.add_argument('--dir_patients', type=str, help='Meshes directory', 
                             default='/home/luciacev/Desktop/training ios files/all data')
     input_param.add_argument('--csv_file', type=str, help='CSV file with patient data',
-                            default='/home/luciacev/Desktop/training ios files/all data/csv files/data_lower_fold_0_O.csv')
+                            default='/home/luciacev/Desktop/training ios files/mucogingival/csv files/data_lower_fold_0_MG.csv')
     
     input_param.add_argument('--jaw', type=str, default='Lower', choices=['Upper', 'Lower'])
-    input_param.add_argument('-lm', '--lm_typ', type=str, default='C', choices=['O', 'C'],
+    input_param.add_argument('-lm', '--lm_typ', type=str, default='MG', choices=['O', 'C','MG'],
                             help="Landmark type: 'O' for Occlusal or 'C' for Cervical")
     input_param.add_argument('--image_size', type=int, default=224)
     input_param.add_argument('--blur_radius', type=int, default=0)

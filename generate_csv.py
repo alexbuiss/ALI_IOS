@@ -17,9 +17,9 @@ import os
 import glob
 from pathlib import Path
 
-data_dir = "/home/luciacev/Desktop/training ios files/all data"
+data_dir = "/home/luciacev/Desktop/training ios files/mucogingival"
 landmarks_dir = os.path.join(data_dir, "landmarks")
-vtk_dir = os.path.join(data_dir, "vtk files")
+vtk_dir = os.path.join(data_dir, "vtk")
 
 # Verify directories exist
 if not os.path.exists(data_dir):
@@ -56,17 +56,13 @@ if len(vtk_files) == 0:
 for vtk_file in vtk_files:
     vtk_basename = os.path.basename(vtk_file)
     file_base = os.path.splitext(vtk_basename)[0]  # "A10_T1_L_SegOrReg"
-    
-    # Determine jaw (L or U)
-    if '_L_' in file_base:
+    if '_L' in file_base:
         jaw = 'L'
-    elif '_U_' in file_base:
+    elif '_U' in file_base:
         jaw = 'U'
     else:
         continue
-    
     surf_rel = os.path.relpath(vtk_file, data_dir)
-    
     # Find matching landmarks in Occlusal subfolder
     occlusal_jsons = sorted(glob.glob(os.path.join(landmarks_dir, "Occlusal", f"{file_base}*_O_*.json")))
     for landmarks_path in occlusal_jsons:
@@ -88,6 +84,17 @@ for vtk_file in vtk_files:
             'landmarks': landmarks_rel,
             'landmark_type': 'C',
         })
+    mucogingival_jsons = sorted(glob.glob(os.path.join(landmarks_dir, f"{file_base}*_MG.mrk.json")))
+    print(mucogingival_jsons,file_base)
+    for landmarks_path in mucogingival_jsons:
+        print(landmarks_path)
+        landmarks_rel = os.path.relpath(landmarks_path, data_dir)
+        data_list.append({
+            'jaw': jaw,
+            'surf': surf_rel,
+            'landmarks': landmarks_rel,
+            'landmark_type': 'MG',
+        })
 
 # Verify we have data
 if len(data_list) == 0:
@@ -107,6 +114,7 @@ for jaw_type, jaw_name in [('U', 'upper'), ('L', 'lower')]:
     # Separate _C and _O for balanced split
     df_c = df_jaw[df_jaw['landmark_type'] == 'C'].copy().reset_index(drop=True)
     df_o = df_jaw[df_jaw['landmark_type'] == 'O'].copy().reset_index(drop=True)
+    df_mg = df_jaw[df_jaw['landmark_type'] == 'MG'].copy().reset_index(drop=True)
     
     print(f"\n{'='*80}")
     print(f"Processing {jaw_name.upper()} jaw | Occlusal: {len(df_o)} | Cervical: {len(df_c)}")
@@ -168,6 +176,33 @@ for jaw_type, jaw_name in [('U', 'upper'), ('L', 'lower')]:
         df_fold_c = df_c_trainval.iloc[start_c:end_c]
         
         fold_csv_c = os.path.join(data_dir, f"data_{jaw_name}_fold_{fold_idx}_C.csv")
+        df_fold_c[['surf', 'landmarks']].to_csv(fold_csv_c, index=False)
+        print(f"✅ {fold_csv_c}: {len(df_fold_c)} rows (Cervical - fold {fold_idx})")
+
+    # ========================
+    # MUCOGINGIVAL (_MG_) - Separate CSV
+    # ========================
+    test_size_c = max(1, int(len(df_mg) * 0.1))
+    df_mg_test = df_mg.iloc[:test_size_c].copy()
+    df_mg_trainval = df_mg.iloc[test_size_c:].copy().reset_index(drop=True)
+    
+    # Save test CSV for Cervical
+    test_csv_c = os.path.join(data_dir, f"data_{jaw_name}_test_MG.csv")
+    df_mg_test[['surf', 'landmarks']].to_csv(test_csv_c, index=False)
+    print(f"✅ {test_csv_c}: {len(df_mg_test)} rows (Cervical - external test)")
+    
+    # Create 5 folds for Cervical
+    fold_size_c = len(df_mg_trainval) // n_folds
+    remaining_c = len(df_mg_trainval) % n_folds
+    
+    for fold_idx in range(n_folds):
+        size_c = fold_size_c + (1 if fold_idx < remaining_c else 0)
+        start_c = fold_idx * fold_size_c + min(fold_idx, remaining_c)
+        end_c = start_c + size_c
+        
+        df_fold_c = df_mg_trainval.iloc[start_c:end_c]
+        
+        fold_csv_c = os.path.join(data_dir, f"data_{jaw_name}_fold_{fold_idx}_MG.csv")
         df_fold_c[['surf', 'landmarks']].to_csv(fold_csv_c, index=False)
         print(f"✅ {fold_csv_c}: {len(df_fold_c)} rows (Cervical - fold {fold_idx})")
 

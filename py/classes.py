@@ -22,7 +22,7 @@ from vtk import vtkMatrix3x3
 import vtk
 
 # Global cache directory for VTK geometry
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_mg'
 
 class FlyByDataset(Dataset):
     def __init__(self, df, device, dataset_dir='', rotate=False, cache_dir=None, landmark_type='O', jaw='L'):
@@ -35,8 +35,8 @@ class FlyByDataset(Dataset):
         # Use default cache directory based on landmark type
         if cache_dir is None:
             # Create separate cache subdirectories for Occlusal and Cervical
-            lm_subdir = 'occlusal' if landmark_type == 'O' else 'cervical'
-            cache_dir = os.path.join(CACHE_BASE_DIR, lm_subdir, 'geom_render')
+            lm_type_dir = GV.PATH_DICT[landmark_type]
+            cache_dir = os.path.join(CACHE_BASE_DIR, lm_type_dir, 'geom_render')
         self.cache_dir = cache_dir
         if not os.path.exists(self.cache_dir): os.makedirs(self.cache_dir)
 
@@ -122,6 +122,7 @@ class FlyByDataset(Dataset):
         landmark_path = os.path.join(self.dataset_dir, self.df.iloc[idx]["landmarks"])
         
         data = json.load(open(landmark_path))
+        print(landmark_path)
         markups = data['markups']
         landmarks_lst = markups[0]['controlPoints']
         lst_lm = GV.LANDMARKS[self.jaw]
@@ -131,10 +132,17 @@ class FlyByDataset(Dataset):
         for landmark in landmarks_lst:
             label = landmark["label"]
             if label in lst_lm:
+                print(label)
                 raw_pos = np.array(landmark["position"])
-                scaled_pos = Downscale(raw_pos, mean_arr, scale_factor)
-                landmarks_position[lst_lm.index(label)] = scaled_pos
-                found_count += 1
+                if not isinstance(raw_pos, np.ndarray) and raw_pos.ndim == 0:
+                    print(f"⚠️ Warning: Landmark détecté à l'index {idx}")
+                elif "" in raw_pos or any(x == "" for x in raw_pos):
+                    print(f"⚠️ Warning: Landmark détecté à l'index {idx}")
+                else:
+                    print("tout est bon",raw_pos)
+                    scaled_pos = Downscale(raw_pos, mean_arr, scale_factor)
+                    landmarks_position[lst_lm.index(label)] = scaled_pos
+                    found_count += 1
 
         landmarks_pos = np.array([np.append(pos, 1) for pos in landmarks_position])
         if angle:

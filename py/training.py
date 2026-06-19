@@ -8,7 +8,7 @@ import time
 import os
 
 # Global cache directory for all cache files
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_mg'
 
 def Model(in_channels, out_channels):
     """Create UNet model with specified channels."""
@@ -32,7 +32,7 @@ def Training(train_dataloader, train_data, agent, epoch, nb_epoch, model, optimi
     scaler = torch.amp.GradScaler('cuda')          
     model.train()
     epoch_loss = 0
-    lm_type_dir = "cervical" if lm_typ == "C" else "occlusal"
+    lm_type_dir = GV.PATH_DICT[lm_typ]
     
     # Cache directories for this fold
     # INPUTS: Global (reused across all modes and folds) - NO fold_idx in path
@@ -137,7 +137,7 @@ def Validation(val_dataloader, epoch, nb_epoch, model, agent, lst_label, dice_me
     final_metric = 0
     val_loss = 0
     step = 0
-    lm_type_dir = "cervical" if lm_typ == "C" else "occlusal"
+    lm_type_dir = GV.PATH_DICT[lm_typ]
     
     # Cache directories for this fold
     # INPUTS: Global (reused across all modes and folds) - NO fold_idx in path

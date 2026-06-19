@@ -37,7 +37,7 @@ from post_process import NeighborPoints
 def GetLandmarkPosFromLP(lm_pos, target, jaw):
     lst_lm = GV.LANDMARKS[jaw]
     # Vérifie si la target existe dans la liste globale
-    # print(target,lm_pos)
+
     if target not in lst_lm:
         print(f"DEBUG: Target {target} non trouvée dans GlobVar!")
         return torch.zeros((len(lm_pos), 3)) # Retourne des zéros si pas trouvé
@@ -343,6 +343,7 @@ def merge_meshes(verts_1,faces_1,text_1,verts_2,faces_2,text_2):
 
 def Get_lst_landmarks(LP, lst_names_land, jaw):
     lst_landmarks=[]
+    print(lst_names_land)
     for landmarks in lst_names_land:
         lm_coords = GetLandmarkPosFromLP(LP, landmarks, jaw)
         lst_landmarks.append(lm_coords)
@@ -400,7 +401,6 @@ def Gen_patch(V, RED, LP, label, radius, batch_idx, jaw, lm_typ='o'):
     V_coords = V[0].to(GV.DEVICE)
     # Filtre pour ignorer les points de padding (0,0,0) de la dent
     real_surface_mask = torch.linalg.norm(V_coords, dim=1) > 1e-4
-
     lst_landmarks = Get_lst_landmarks(LP, GV.dic_label[lm_typ][label], jaw)
     # Couleurs pures : R(1,0,0), V(0,1,0), B(0,0,1)
     colors = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=GV.DEVICE)
@@ -408,7 +408,7 @@ def Gen_patch(V, RED, LP, label, radius, batch_idx, jaw, lm_typ='o'):
     colored_landmarks = 0  # Track how many landmarks were actually colored
     for color_index, all_patients_coords in enumerate(lst_landmarks):
         landmark_coord = all_patients_coords[batch_idx].view(1, 3).to(GV.DEVICE)
-        
+        print(f"DEBUG Patient {batch_idx} - Label {label} - Coordonnées Target: {landmark_coord.cpu().numpy()}")
         # SI LE LANDMARK EST À L'ORIGINE (0,0,0), ON SKIP TOTALEMENT
         # C'est ce qui supprimera ton point jaune central.
         if torch.norm(landmark_coord) < 0.05:
@@ -420,9 +420,10 @@ def Gen_patch(V, RED, LP, label, radius, batch_idx, jaw, lm_typ='o'):
         mask = (distances < radius) & real_surface_mask
         
         if mask.any():
-            print("on colorie",len(mask.nonzero()))
-            # AFFECTATION DIRECTE (=) et non addition (+=) pour éviter le jaune
-            RED[0][mask] = colors[color_index % len(colors)]
+            print("on colorie", len(mask.nonzero()))
+            # S'assurer que l'indexation se fait explicitement sur la dimension des sommets (dim 1)
+            color_to_apply = colors[color_index % len(colors)]
+            RED[0, mask, :] = color_to_apply
             colored_landmarks += 1
         else:
             print(f"⚠️  No vertices colored for landmark {GV.dic_label[lm_typ][label][color_index]}")

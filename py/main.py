@@ -25,7 +25,7 @@ from training import Model, Training, Validation
 from ALIDDM_utils import Gen_Full_Mask_Mesh
 
 # Global cache directory for all cache files
-CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_3channelsout_cam'
+CACHE_BASE_DIR = '/media/luciacev/Data/ALI_IOS cache_mg'
 
 # Configure multiprocessing for CUDA/PyTorch3D
 if __name__ == '__main__':
@@ -165,7 +165,7 @@ def pre_render_all_inputs_only(dataloader, agent, lst_label, jawtype,lm_type):
         jawtype: 'L' or 'U' for lower or upper jaw
     """
     # Global input cache (not fold-specific, not lm_typ-specific)
-    lm_type_dir = "cervical" if lm_type == "C" else "occlusal"
+    lm_type_dir = GV.PATH_DICT[lm_type]
     input_dir = os.path.join(CACHE_BASE_DIR,lm_type_dir, f'global_inputs_{jawtype}')
     
     # Check if complete global cache exists
@@ -226,7 +226,7 @@ def pre_render_all_inputs_only(dataloader, agent, lst_label, jawtype,lm_type):
     print(f"GLOBAL INPUTS CACHED | {expected_count} files saved")
 
 def pre_render_all_inputs_and_targets(dataloader, agent, lst_label, fold_idx, jawtype, lm_typ='o', cache_type='train'):
-    lm_type_dir = "cervical" if lm_typ == "C" else "occlusal"
+    lm_type_dir = GV.PATH_DICT[lm_typ]
     mask_dir = os.path.join(CACHE_BASE_DIR,lm_type_dir, f'fold_{fold_idx}_targets_{cache_type}_{jawtype}_{lm_typ}')
     
     # Vérification du cache
@@ -519,14 +519,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ALIDDM Training', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     input_param = parser.add_argument_group('input files')
-    input_param.add_argument('--dir_project', type=str, help='dataset directory', default='/home/luciacev/Desktop/training ios files/all data')
-    input_param.add_argument('--dir_data', type=str, help='Input directory', default='/home/luciacev/Desktop/training ios files/all data')
-    input_param.add_argument('--dir_patients', type=str, help='Meshes directory', default='/home/luciacev/Desktop/training ios files/all data')
-    input_param.add_argument('--csv_folder', type=str, help='Folder containing CSV folds for cross-validation', default='/home/luciacev/Desktop/training ios files/all data/csv files')
+    input_param.add_argument('--dir_project', type=str, help='dataset directory', default='/home/luciacev/Desktop/training ios files/mucogingival')
+    input_param.add_argument('--dir_data', type=str, help='Input directory', default='/home/luciacev/Desktop/training ios files/mucogingival')
+    input_param.add_argument('--dir_patients', type=str, help='Meshes directory', default='/home/luciacev/Desktop/training ios files/mucogingival')
+    input_param.add_argument('--csv_folder', type=str, help='Folder containing CSV folds for cross-validation', default='/home/luciacev/Desktop/training ios files/mucogingival/csv files')
 
     input_param.add_argument('-j','--jaw', type=str, default="L")
-    input_param.add_argument('-lm', '--lm_typ', type=str, default="C", choices=['O', 'C'], help="Landmark type: 'O' for Occlusal (O+MB+DB, 3 landmarks) or 'C' for Cervical (CL+CB, 2 landmarks)")
-    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.25)
+    input_param.add_argument('-lm', '--lm_typ', type=str, default="MG", choices=['O', 'C','MG'], help="Landmark type: 'O' for Occlusal (O+MB+DB, 3 landmarks) or 'C' for Cervical (CL+CB, 2 landmarks)")
+    input_param.add_argument('-sr', '--sphere_radius', type=float, default=0.2)
     input_param.add_argument('--lst_label_l', type=list, default=["18","19","20","21","22","23","24","25","26","27","28","29","30","31"])
     input_param.add_argument('--lst_label_u', type=list, default=["2","3","4","5","6","7","8","9","10","11","12","13","14","15"])
 
@@ -535,13 +535,13 @@ if __name__ == '__main__':
     input_param.add_argument('--blur_radius', type=int, default=0)
     input_param.add_argument('--faces_per_pixel', type=int, default=1)
     
-    input_param.add_argument('-bs', '--batch_size', type=int, default=4)
+    input_param.add_argument('-bs', '--batch_size', type=int, default=1)
     input_param.add_argument('-nc', '--num_classes', type=int, default=4)
     input_param.add_argument('-me', '--max_epoch', type=int, default=300)
     input_param.add_argument('-vf', '--val_freq', type=int, default=1)
     input_param.add_argument('-lr', '--learning_rate', type=float, default=1e-4)
     input_param.add_argument('-es', '--early_stopping_patience', type=int, default=20,help='Number of epochs with no improvement before early stopping')
-    input_param.add_argument('--dir_models', type=str, default='/home/luciacev/Desktop/training ios files/all data/models/Upper')
+    input_param.add_argument('--dir_models', type=str, default='/home/luciacev/Desktop/training ios files/mucogingival/models/Lower')
 
     args = parser.parse_args()
     main(args)

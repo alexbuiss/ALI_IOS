@@ -15,7 +15,7 @@ mapping = {
 
 LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
 UPPER_DENTAL = ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7']
-TYPE_LM = ['O','MB','DB','CL','CB']
+TYPE_LM = ['O','MB','DB','CL','CB','MG']
 
 LANDMARKS = {
     "L": [tooth + lm for tooth in LOWER_DENTAL for lm in TYPE_LM],
@@ -27,48 +27,30 @@ LABEL_U = [str(x) for x in range(2, 16)]   # "2" to "15"
 
 dic_label = {
     'O': {
-        **{str(15 - i): LANDMARKS["U"][i*5:i*5+3] for i in range(14)},  # teeth 15 to 2
-        **{str(18 + i): LANDMARKS["L"][i*5:i*5+3] for i in range(14)}   # teeth 18 to 31
+        **{str(15 - i): LANDMARKS["U"][i*6:i*6+3] for i in range(14)},  # teeth 15 to 2
+        **{str(18 + i): LANDMARKS["L"][i*6:i*6+3] for i in range(14)}   # teeth 18 to 31
     },
     'C': {
-        **{str(15 - i): LANDMARKS["U"][i*5+3:i*5+5] for i in range(14)},
-        **{str(18 + i): LANDMARKS["L"][i*5+3:i*5+5] for i in range(14)}
+        **{str(15 - i): LANDMARKS["U"][i*6+3:i*6+5] for i in range(14)},
+        **{str(18 + i): LANDMARKS["L"][i*6+3:i*6+5] for i in range(14)}
+    },
+    'MG': {
+        **{str(18 + i): [LANDMARKS["L"][i*6+5]] for i in range(14)}
     }
 }
 
 MODELS_DICT = {
     'O': {'O': 0, 'MB': 1, 'DB': 2},
-    'C': {'CL': 0, 'CB': 1}
+    'C': {'CL': 0, 'CB': 1},
+    'MG':{'MG':0}
 }
-import numpy as np
 
-def generate_elliptical_360(n_cameras=12, height_angle=0.4):
-    """
-    Génère N caméras réparties sur une trajectoire elliptique pour compenser
-    le fait que la dent soit plus large sur l'axe X que sur l'axe Y.
-    """
-    cam_points = []
-    angles = np.linspace(0, 2 * np.pi, n_cameras, endpoint=False)
-    
-    # Coeffs basés sur tes Verts bounds (X est ~1.25 fois plus grand que Y)
-    scale_x = 1.25
-    scale_y = 1.00
-    
-    for angle in angles:
-        # On déforme le cercle en ellipse
-        x = np.cos(angle) * scale_x
-        y = np.sin(angle) * scale_y
-        z = height_angle
-        
-        cam_points.append([x, y, z])
-        
-    cam_points = np.array(cam_points)
-    # On normalise ensuite pour garder des vecteurs unitaires propres
-    return cam_points / np.linalg.norm(cam_points, axis=1, keepdims=True)
+PATH_DICT = {
+    'O': "Occlusal",
+    'C': "Cervical",
+    'MG':"Mucogingival"
+}
 
-global dic_cam
-
-# Camera positions for different landmark types and jaws
 dic_cam = {
     'O': {
         'L': np.array([
@@ -87,81 +69,56 @@ dic_cam = {
         ])
     },
     'C': {
-        'U': generate_elliptical_360(n_cameras=12, height_angle=0.4),  # Pour Upper
-        'L': generate_elliptical_360(n_cameras=12, height_angle=-0.4) # Pour Lower
+        'L': np.array([
+            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+            np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+            np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+            np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+            np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
+            np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
+            np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
+            np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
+            np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
+            np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
+        ]),
+        'U': np.array([
+            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+            np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+            np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+            np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+            np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
+            np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
+            np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
+            np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
+            np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
+            np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
+        ])
+    },
+    'MG': {
+        'L': np.array([
+            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+        ]),
+        'U': np.array([
+            np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
+            np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
+            np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
+            np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
+            np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
+            np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
+            np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
+            np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
+            np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
+            np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
+            np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
+            np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
+        ])
     }
-    # 'C': {
-    #     'L': np.array([
-    #         np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-    #         np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-    #         np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-    #         np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-    #         np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-    #         np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-    #         np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
-    #         np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
-    #         np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
-    #         np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
-    #         np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
-    #         np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
-    #     ]),
-    #     'U': np.array([
-    #         np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-    #         np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-    #         np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-    #         np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-    #         np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-    #         np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-    #         np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
-    #         np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
-    #         np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
-    #         np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
-    #         np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
-    #         np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
-    #     ])
-    # }
-#     'C': {
-#         'L': np.array([
-#             # Niveau z = 0 (8 positions)
-#             np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-#             np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-#             np.array([0, 1, 0]) / linalg.norm([0, 1, 0]),
-#             np.array([0, -1, 0]) / linalg.norm([0, -1, 0]),
-#             np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-#             np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-#             np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-#             np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-#             # Niveau z = 0.5 (8 positions)
-#             np.array([1, 0, 0.5]) / linalg.norm([1, 0, 0.5]),
-#             np.array([-1, 0, 0.5]) / linalg.norm([-1, 0, 0.5]),
-#             np.array([0, 1, 0.5]) / linalg.norm([0, 1, 0.5]),
-#             np.array([0, -1, 0.5]) / linalg.norm([0, -1, 0.5]),
-#             np.array([1, -1, 0.5]) / linalg.norm([1, -1, 0.5]),
-#             np.array([-1, -1, 0.5]) / linalg.norm([-1, -1, 0.5]),
-#             np.array([1, 1, 0.5]) / linalg.norm([1, 1, 0.5]),
-#             np.array([-1, 1, 0.5]) / linalg.norm([-1, 1, 0.5])
-#         ]),
-#         'U': np.array([
-#             # Niveau z = 0 (8 positions)
-#             np.array([1, 0, 0]) / linalg.norm([1, 0, 0]),
-#             np.array([-1, 0, 0]) / linalg.norm([-1, 0, 0]),
-#             np.array([0, 1, 0]) / linalg.norm([0, 1, 0]),
-#             np.array([0, -1, 0]) / linalg.norm([0, -1, 0]),
-#             np.array([1, -1, 0]) / linalg.norm([1, -1, 0]),
-#             np.array([-1, -1, 0]) / linalg.norm([-1, -1, 0]),
-#             np.array([1, 1, 0]) / linalg.norm([1, 1, 0]),
-#             np.array([-1, 1, 0]) / linalg.norm([-1, 1, 0]),
-#             # Niveau z = -0.5 (8 positions)
-#             np.array([1, 0, -0.5]) / linalg.norm([1, 0, -0.5]),
-#             np.array([-1, 0, -0.5]) / linalg.norm([-1, 0, -0.5]),
-#             np.array([0, 1, -0.5]) / linalg.norm([0, 1, -0.5]),
-#             np.array([0, -1, -0.5]) / linalg.norm([0, -1, -0.5]),
-#             np.array([1, -1, -0.5]) / linalg.norm([1, -1, -0.5]),
-#             np.array([-1, -1, -0.5]) / linalg.norm([-1, -1, -0.5]),
-#             np.array([1, 1, -0.5]) / linalg.norm([1, 1, -0.5]),
-#             np.array([-1, 1, -0.5]) / linalg.norm([-1, 1, -0.5])
-#         ])
-#     }
 }
 
 
